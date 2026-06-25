@@ -1,9 +1,9 @@
-name: ЯДРО CI
+name: YADRO CI
 
 on: [push, pull_request]
 
 jobs:
-  сборка:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -13,5 +13,5 @@ jobs:
           python-version: '3.10'
       - name: Установка зависимостей
         run: pip install -r requirements.txt
-      - name: КОМПИЛЯЦИЯ ПРИМЕРА (LLVM IR)
+      - name: Компиляция примера (LLVM IR)
         run: python -m src.main examples/тест.яд --ir
