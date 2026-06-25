@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
-"""Компилятор YadroLang v1.0 - нативная компиляция через LLVM.
+"""Компилятор YadroLang v1.1 - нативная компиляция через LLVM.
 
-Использование:
-    python -m src.main файл.яд          # компиляция в нативный объектник ядро.o
+    python -m src.main файл.яд          # собрать нативный объектник ядро.o
     python -m src.main файл.яд --ir     # вывести LLVM IR
 """
 import sys
