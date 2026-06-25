@@ -1,11 +1,18 @@
 # -*- coding: utf-8 -*-
-"""Генератор LLVM IR для YadroLang (через llvmlite)."""
+"""Генератор LLVM IR для YadroLang (через llvmlite).
+
+Поддержка: функции, if/while, рекурсия, встроенная 'печать' (printf),
+автогенерация нативной точки входа main для запуска как ELF-бинаря.
+"""
 from llvmlite import ir, binding as llvm
 from src.синтаксис import (Программа, Функция, Вернуть, Пусть, Присвоить,
                            Если, Пока, Число, Строка, Имя, Бинарный, Вызов)
 
 ЦЕЛОЕ = ir.IntType(64)
 БУЛЕВ = ir.IntType(1)
+БАЙТ = ir.IntType(8)
+УКАЗ = БАЙТ.as_pointer()
+I32 = ir.IntType(32)
 
 
 class ОшибкаКодогена(Exception):
@@ -19,14 +26,42 @@ class Кодоген:
         self.функции = {}
         self.строитель = None
         self.скоуп = {}
+        self._счёт = 0
+        printf_ty = ir.FunctionType(I32, [УКАЗ], var_arg=True)
+        self.printf = ir.Function(self.модуль, printf_ty, name="printf")
+
+    def _строка_глоб(self, текст):
+        данные = bytearray(текст.encode("utf-8") + b"\x00")
+        тип = ir.ArrayType(БАЙТ, len(данные))
+        г = ir.GlobalVariable(self.модуль, тип, name=f".str.{self._счёт}")
+        self._счёт += 1
+        г.linkage = "internal"
+        г.global_constant = True
+        г.initializer = ir.Constant(тип, данные)
+        return г
+
+    def _указ(self, b, г):
+        ноль = ir.Constant(I32, 0)
+        return b.gep(г, [ноль, ноль], inbounds=True)
 
     def сгенерировать(self, прог: Программа) -> str:
+        self._фмт_число = self._строка_глоб("%lld\n")
+        self._фмт_рез = self._строка_глоб("Результат старт(): %lld\n")
         for ф in прог.функции:
             тип = ir.FunctionType(ЦЕЛОЕ, [ЦЕЛОЕ] * len(ф.параметры))
             self.функции[ф.имя] = ir.Function(self.модуль, тип, name=ф.имя)
         for ф in прог.функции:
             self._функция(ф)
+        if "старт" in self.функции:
+            self._главная()
         return str(self.модуль)
+
+    def _главная(self):
+        fn = ir.Function(self.модуль, ir.FunctionType(I32, []), name="main")
+        b = ir.IRBuilder(fn.append_basic_block("вход"))
+        рез = b.call(self.функции["старт"], [])
+        b.call(self.printf, [self._указ(b, self._фмт_рез), рез])
+        b.ret(ir.Constant(I32, 0))
 
     def _функция(self, ф: Функция):
         fn = self.функции[ф.имя]
@@ -114,6 +149,10 @@ class Кодоген:
                 "==": lambda: self.строитель.icmp_signed("==", л, п),
             }[в.оп]()
         if isinstance(в, Вызов):
+            if в.имя == "печать":
+                арг = self._выражение(в.аргументы[0])
+                self.строитель.call(self.printf, [self._указ(self.строитель, self._фмт_число), арг])
+                return ЦЕЛОЕ(0)
             if в.имя not in self.функции:
                 raise ОшибкаКодогена(f"Неизвестная функция '{в.имя}' (строка {в.строка})")
             арг = [self._выражение(a) for a in в.аргументы]
