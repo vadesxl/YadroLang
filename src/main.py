@@ -23,13 +23,33 @@ def компилировать(исходник: str, выводить_ir=False)
 
 
 def собрать_нативно(ir_код: str, выход="ядро.o"):
-    llvm.initialize()
-    llvm.initialize_native_target()
-    llvm.initialize_native_asmprinter()
+    # Инициализация LLVM. В новых версиях llvmlite часть вызовов устарела
+    # и бросает исключение - оборачиваем каждый отдельно.
+    for _иниц in (
+        getattr(llvm, "initialize", None),
+        getattr(llvm, "initialize_native_target", None),
+        getattr(llvm, "initialize_native_asmprinter", None),
+    ):
+        if _иниц is not None:
+            try:
+                _иниц()
+            except Exception:
+                pass  # уже инициализировано / вызов устарел
     модуль = llvm.parse_assembly(ir_код)
     модуль.verify()
-    pmb = llvm.create_pass_manager_builder(); pmb.opt_level = 2
-    pm = llvm.create_module_pass_manager(); pmb.populate(pm); pm.run(модуль)
+    # Оптимизация. API менеджера проходов отличается между версиями llvmlite -
+    # пробуем старый, затем новый, иначе собираем без оптимизации.
+    try:
+        pmb = llvm.create_pass_manager_builder(); pmb.opt_level = 2
+        pm = llvm.create_module_pass_manager(); pmb.populate(pm); pm.run(модуль)
+    except AttributeError:
+        try:
+            pb = llvm.create_pass_builder(
+                llvm.Target.from_default_triple().create_target_machine(),
+                llvm.PipelineTuningOptions(speed_level=2))
+            pb.getModulePassManager().run(модуль, pb)
+        except Exception:
+            pass  # без оптимизации - корректность не страдает
     target = llvm.Target.from_default_triple().create_target_machine()
     with open(выход, "wb") as f:
         f.write(target.emit_object(модуль))

@@ -13,5 +13,40 @@ jobs:
           python-version: '3.10'
       - name: Установка зависимостей
         run: pip install -r requirements.txt
-      - name: Компиляция примера (LLVM IR)
+
+      - name: LLVM IR
         run: python -m src.main examples/тест.яд --ir
+
+      - name: Нативная сборка и запуск
+        run: |
+          python -m src.main examples/тест.яд
+          cc ядро.o -o ядро
+          echo "=== Запуск нативного бинаря YadroLang ==="
+          ./ядро
+
+      - name: Этичный экспорт компилируется
+        run: python -m src.main examples/безопасный.яд --ir
+
+      - name: Блокировка - нет мандата
+        run: |
+          if python -m src.main examples/опасный.яд; then
+            echo "ПРОВАЛ: код без мандата скомпилировался!"; exit 1
+          else echo "OK: мандат обязателен."; fi
+
+      - name: Блокировка - утечка личных данных
+        run: |
+          if python -m src.main examples/утечка.яд; then
+            echo "ПРОВАЛ: утечка скомпилировалась!"; exit 1
+          else echo "OK: taint заблокировал утечку."; fi
+
+      - name: Блокировка - утечка через инициализатор
+        run: |
+          if python -m src.main examples/утечка_в_присвоении.яд; then
+            echo "ПРОВАЛ: утечка в присвоении прошла!"; exit 1
+          else echo "OK: taint поймал утечку в инициализаторе."; fi
+
+      - name: Блокировка - утечка через цикл с 0 итераций
+        run: |
+          if python -m src.main examples/утечка_в_цикле.яд; then
+            echo "ПРОВАЛ: утечка через цикл прошла!"; exit 1
+          else echo "OK: taint сохраняется в необязательном цикле."; fi
