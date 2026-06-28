@@ -50,3 +50,33 @@ jobs:
           if python -m src.main examples/утечка_в_цикле.яд; then
             echo "ПРОВАЛ: утечка через цикл прошла!"; exit 1
           else echo "OK: taint сохраняется в необязательном цикле."; fi
+
+      - name: Блокировка - межпроцедурная утечка через параметр
+        run: |
+          if python -m src.main examples/эксплойт_параметр.яд; then
+            echo "ПРОВАЛ: утечка через параметр прошла!"; exit 1
+          else echo "OK: межпроцедурная утечка поймана."; fi
+
+      - name: Блокировка - двойная косвенность
+        run: |
+          if python -m src.main examples/edge_двойная.яд; then
+            echo "ПРОВАЛ: утечка через два уровня прошла!"; exit 1
+          else echo "OK: транзитивная утечка поймана."; fi
+
+      - name: Блокировка - сток в условии если
+        run: |
+          if python -m src.main examples/codex_условие.яд; then
+            echo "ПРОВАЛ: утечка в условии прошла!"; exit 1
+          else echo "OK: сток в условии пойман."; fi
+
+      - name: Блокировка - утечка при цикле с 0 итераций
+        run: |
+          if python -m src.main examples/codex_цикл0.яд; then
+            echo "ПРОВАЛ: утечка при нулевом цикле прошла!"; exit 1
+          else echo "OK: taint параметра сохранён."; fi
+
+      - name: Приёмка - заражённое в не-протекающий параметр компилируется
+        run: python -m src.main examples/edge_безопасный_параметр.яд --ir
+
+      - name: Приёмка - санитайзенное через параметр компилируется
+        run: python -m src.main examples/edge_санитайзер.яд --ir
