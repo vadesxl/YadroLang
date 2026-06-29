@@ -99,3 +99,11 @@ jobs:
 
       - name: Аудит - честный санитайзер компилируется
         run: python -m src.main examples/аудит_безопасный_санитайз.яд --ir
+
+      - name: Блокировка - валидация точки входа (3 бага)
+        run: |
+          for f in без_точки_входа старт_с_параметром дубль_старт; do
+            if python -m src.main examples/$f.яд; then
+              echo "ПРОВАЛ: $f скомпилировался!"; exit 1
+            else echo "OK: $f отклонён."; fi
+          done
