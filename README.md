@@ -1,5 +1,10 @@
 # YadroLang (ЯДРО)
 
+[![CI](https://github.com/vadesxl/YadroLang/actions/workflows/run.yml/badge.svg)](https://github.com/vadesxl/YadroLang/actions/workflows/run.yml)
+[![Release](https://img.shields.io/github/v/release/vadesxl/YadroLang)](https://github.com/vadesxl/YadroLang/releases/latest)
+
+
+
 > "Код - это закон. Добро - это выбор."
 
 Экспериментальный системный язык программирования на русском языке для
@@ -67,3 +72,35 @@ cc ядро.o -o ядро                          # слинковать нат
 значения. Заражение течёт через присваивания и операции. Достичь стока
 (сеть/диск) заражённое значение может только пройдя через санитайзер
 (`анонимизировать`, `проверить_согласие`, ...). Иначе - ошибка компиляции.
+
+
+## Быстрый старт
+
+Требования: Python 3.11+ и llvmlite.
+
+```bash
+pip install llvmlite
+git clone https://github.com/vadesxl/YadroLang.git
+cd YadroLang
+
+# Собрать нативный объектник
+python -m src.main examples/тест.яд
+
+# Посмотреть LLVM IR
+python -m src.main examples/тест.яд --ir
+```
+
+Пример программы (`.яд`):
+
+```
+функ старт() {
+    печать(42)
+}
+```
+
+## Релиз
+
+Актуальная версия: **[v1.4.0 - Защита кодогенерации](https://github.com/vadesxl/YadroLang/releases/tag/v1.4.0)**
+- 11 фиксов (5 security + 6 корректность)
+- ~33 проверки в CI
+- Этический анализатор: capability-мандаты + taint-анализ персональных данных
