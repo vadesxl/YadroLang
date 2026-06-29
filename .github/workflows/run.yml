@@ -107,3 +107,11 @@ jobs:
               echo "ПРОВАЛ: $f скомпилировался!"; exit 1
             else echo "OK: $f отклонён."; fi
           done
+
+      - name: Блокировка - семантика вызовов (4 бага)
+        run: |
+          for f in вызов_неизвестной арность_мало арность_много лексер_неизвестный_символ; do
+            if python -m src.main examples/$f.яд; then
+              echo "ПРОВАЛ: $f скомпилировался!"; exit 1
+            else echo "OK: $f отклонён."; fi
+          done
