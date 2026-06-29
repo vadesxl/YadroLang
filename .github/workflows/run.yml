@@ -115,3 +115,11 @@ jobs:
               echo "ПРОВАЛ: $f скомпилировался!"; exit 1
             else echo "OK: $f отклонён."; fi
           done
+
+      - name: Блокировка - деление на ноль и переполнение i64
+        run: |
+          for f in деление_на_ноль переполнение_i64; do
+            if python -m src.main examples/$f.яд; then
+              echo "ПРОВАЛ: $f скомпилировался!"; exit 1
+            else echo "OK: $f отклонён."; fi
+          done
