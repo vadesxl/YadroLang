@@ -1,193 +1,76 @@
 # -*- coding: utf-8 -*-
-"""Генератор LLVM IR для YadroLang (через llvmlite).
-
-Поддержка: функции, if/while, рекурсия, встроенная 'печать' (printf),
-автогенерация нативной точки входа main для запуска как ELF-бинаря.
-"""
-from llvmlite import ir, binding as llvm
-from src.синтаксис import (Программа, Функция, Вернуть, Пусть, Присвоить,
-                           Если, Пока, Число, Строка, Имя, Бинарный, Вызов)
-
-ЦЕЛОЕ = ir.IntType(64)
-БУЛЕВ = ir.IntType(1)
-БАЙТ = ir.IntType(8)
-УКАЗ = БАЙТ.as_pointer()
-I32 = ir.IntType(32)
-
-
-class ОшибкаКодогена(Exception):
-    ...
-
-
+"""Проверяемый LLVM IR генератор, ABI v1."""
+import hashlib,re
+from llvmlite import ir,binding as llvm
+from src.синтаксис import Программа,Функция,Вернуть,Пусть,Присвоить,Если,Пока,Число,Булево,Строка,Имя,Бинарный,Вызов
+ЦЕЛОЕ=ir.IntType(64);БУЛЕВ=ir.IntType(1);БАЙТ=ir.IntType(8);УКАЗ=БАЙТ.as_pointer();I32=ir.IntType(32)
+class ОшибкаКодогена(Exception):pass
+def _символ(префикс,имя):
+ читаемое=re.sub(r"[^A-Za-z0-9_]","_",имя)[:40];хэш=hashlib.sha256(имя.encode()).hexdigest()[:12];return f"yadro_{префикс}_v1_{читаемое}_{хэш}"
 class Кодоген:
-    def __init__(self):
-        self.модуль = ir.Module(name="ядро")
-        self.модуль.triple = llvm.get_default_triple()
-        self.функции = {}
-        self.строитель = None
-        self.скоуп = {}
-        self._счёт = 0
-        printf_ty = ir.FunctionType(I32, [УКАЗ], var_arg=True)
-        self.printf = ir.Function(self.модуль, printf_ty, name="printf")
-        self.внешние = {}   # системные API (сеть.*, файл.*, пользователь.* и т.п.)
-
-    def _внешняя(self, имя, число_арг):
-        """Объявляет (или возвращает) внешнюю системную функцию.
-
-        Системные API (источники/стоки/санитайзеры) реализуются вне языка,
-        как libc. Кодоген объявляет их как extern с сигнатурой i64(i64...).
-        Этичность их использования уже проверена анализатором до кодогена.
-        """
-        ключ = (имя, число_арг)
-        if ключ not in self.внешние:
-            тип = ir.FunctionType(ЦЕЛОЕ, [ЦЕЛОЕ] * число_арг)
-            безопасное = "ext." + имя.replace(".", "_")
-            self.внешние[ключ] = ir.Function(self.модуль, тип, name=безопасное)
-        return self.внешние[ключ]
-
-    def _строка_глоб(self, текст):
-        данные = bytearray(текст.encode("utf-8") + b"\x00")
-        тип = ir.ArrayType(БАЙТ, len(данные))
-        г = ir.GlobalVariable(self.модуль, тип, name=f".str.{self._счёт}")
-        self._счёт += 1
-        г.linkage = "internal"
-        г.global_constant = True
-        г.initializer = ir.Constant(тип, данные)
-        return г
-
-    def _указ(self, b, г):
-        ноль = ir.Constant(I32, 0)
-        return b.gep(г, [ноль, ноль], inbounds=True)
-
-    def сгенерировать(self, прог: Программа) -> str:
-        self._фмт_число = self._строка_глоб("%lld\n")
-        self._фмт_рез = self._строка_глоб("Результат старт(): %lld\n")
-        self._фмт_строка = self._строка_глоб("%s\n")
-        for ф in прог.функции:
-            тип = ir.FunctionType(ЦЕЛОЕ, [ЦЕЛОЕ] * len(ф.параметры))
-            self.функции[ф.имя] = ir.Function(self.модуль, тип, name=ф.имя)
-        for ф in прог.функции:
-            self._функция(ф)
-        if "старт" in self.функции:
-            self._главная()
-        return str(self.модуль)
-
-    def _главная(self):
-        fn = ir.Function(self.модуль, ir.FunctionType(I32, []), name="main")
-        b = ir.IRBuilder(fn.append_basic_block("вход"))
-        рез = b.call(self.функции["старт"], [])
-        b.call(self.printf, [self._указ(b, self._фмт_рез), рез])
-        b.ret(ir.Constant(I32, 0))
-
-    def _функция(self, ф: Функция):
-        fn = self.функции[ф.имя]
-        блок = fn.append_basic_block("вход")
-        self.строитель = ir.IRBuilder(блок)
-        self.скоуп = {}
-        for арг, имя in zip(fn.args, ф.параметры):
-            арг.name = имя
-            ячейка = self.строитель.alloca(ЦЕЛОЕ, name=имя)
-            self.строитель.store(арг, ячейка)
-            self.скоуп[имя] = ячейка
-        for утв in ф.тело:
-            self._утверждение(утв)
-        if not self.строитель.block.is_terminated:
-            self.строитель.ret(ЦЕЛОЕ(0))
-
-    def _утверждение(self, у):
-        if isinstance(у, Вернуть):
-            self.строитель.ret(self._выражение(у.значение))
-        elif isinstance(у, Пусть):
-            ячейка = self.строитель.alloca(ЦЕЛОЕ, name=у.имя)
-            self.строитель.store(self._выражение(у.значение), ячейка)
-            self.скоуп[у.имя] = ячейка
-        elif isinstance(у, Присвоить):
-            if у.имя not in self.скоуп:
-                raise ОшибкаКодогена(f"Переменная '{у.имя}' не объявлена (строка {у.строка})")
-            self.строитель.store(self._выражение(у.значение), self.скоуп[у.имя])
-        elif isinstance(у, Если):
-            self._если(у)
-        elif isinstance(у, Пока):
-            self._пока(у)
-        else:
-            self._выражение(у)
-
-    def _если(self, у: Если):
-        усл = self._в_булев(self._выражение(у.условие))
-        с_иначе = bool(у.иначе)
-        bb_тогда = self.строитель.append_basic_block("тогда")
-        bb_иначе = self.строитель.append_basic_block("иначе") if с_иначе else None
-        bb_конец = self.строитель.append_basic_block("конец_если")
-        self.строитель.cbranch(усл, bb_тогда, bb_иначе or bb_конец)
-        self.строитель.position_at_end(bb_тогда)
-        for s in у.тогда:
-            self._утверждение(s)
-        if not self.строитель.block.is_terminated:
-            self.строитель.branch(bb_конец)
-        if с_иначе:
-            self.строитель.position_at_end(bb_иначе)
-            for s in у.иначе:
-                self._утверждение(s)
-            if not self.строитель.block.is_terminated:
-                self.строитель.branch(bb_конец)
-        self.строитель.position_at_end(bb_конец)
-
-    def _пока(self, у: Пока):
-        bb_усл = self.строитель.append_basic_block("усл_цикла")
-        bb_тело = self.строитель.append_basic_block("тело_цикла")
-        bb_выход = self.строитель.append_basic_block("выход_цикла")
-        self.строитель.branch(bb_усл)
-        self.строитель.position_at_end(bb_усл)
-        self.строитель.cbranch(self._в_булев(self._выражение(у.условие)), bb_тело, bb_выход)
-        self.строитель.position_at_end(bb_тело)
-        for s in у.тело:
-            self._утверждение(s)
-        if not self.строитель.block.is_terminated:
-            self.строитель.branch(bb_усл)
-        self.строитель.position_at_end(bb_выход)
-
-    def _выражение(self, в):
-        if isinstance(в, Число):
-            return ЦЕЛОЕ(в.значение)
-        if isinstance(в, Имя):
-            if в.имя not in self.скоуп:
-                raise ОшибкаКодогена(f"Неизвестная переменная '{в.имя}' (строка {в.строка})")
-            return self.строитель.load(self.скоуп[в.имя], name=в.имя)
-        if isinstance(в, Бинарный):
-            л = self._выражение(в.слева); п = self._выражение(в.справа)
-            return {
-                "+": lambda: self.строитель.add(л, п),
-                "-": lambda: self.строитель.sub(л, п),
-                "*": lambda: self.строитель.mul(л, п),
-                "/": lambda: self.строитель.sdiv(л, п),
-                ">": lambda: self.строитель.icmp_signed(">", л, п),
-                "<": lambda: self.строитель.icmp_signed("<", л, п),
-                "==": lambda: self.строитель.icmp_signed("==", л, п),
-            }[в.оп]()
-        if isinstance(в, Вызов):
-            if в.имя == "печать":
-                узел = в.аргументы[0]
-                if isinstance(узел, Строка):
-                    г = self._строка_глоб(узел.значение)
-                    self.строитель.call(self.printf,
-                        [self._указ(self.строитель, self._фмт_строка),
-                         self._указ(self.строитель, г)])
-                else:
-                    арг = self._выражение(узел)
-                    if арг.type == БУЛЕВ:                       # i1 -> i64
-                        арг = self.строитель.zext(арг, ЦЕЛОЕ)
-                    self.строитель.call(self.printf,
-                        [self._указ(self.строитель, self._фмт_число), арг])
-                return ЦЕЛОЕ(0)
-            арг = [self._выражение(a) for a in в.аргументы]
-            if в.имя in self.функции:
-                return self.строитель.call(self.функции[в.имя], арг)
-            # системный API: объявляем как внешнюю функцию (libc-подобно)
-            внеш = self._внешняя(в.имя, len(арг))
-            return self.строитель.call(внеш, арг)
-        raise ОшибкаКодогена(f"Не могу сгенерировать узел {type(в).__name__}")
-
-    def _в_булев(self, знач):
-        if знач.type == БУЛЕВ:
-            return знач
-        return self.строитель.icmp_signed("!=", знач, ЦЕЛОЕ(0))
+ def __init__(self):
+  self.модуль=ir.Module(name="ядро");self.модуль.triple=llvm.get_default_triple();self.функции={};self.строитель=None;self.скоуп={};self.внешние={};self._счёт=0;self.printf=ir.Function(self.модуль,ir.FunctionType(I32,[УКАЗ],var_arg=True),name="printf")
+ def _внешняя(self,имя,арность):
+  if имя in self.внешние:
+   функция,известно=self.внешние[имя]
+   if известно!=арность:raise ОшибкаКодогена(f"Несовместимый extern ABI '{имя}': {известно} и {арность}")
+   return функция
+  функция=ir.Function(self.модуль,ir.FunctionType(ЦЕЛОЕ,[ЦЕЛОЕ]*арность),name=_символ("ext",имя));self.внешние[имя]=(функция,арность);return функция
+ def _строка(self,текст):
+  данные=bytearray(текст.encode()+b"\0");тип=ir.ArrayType(БАЙТ,len(данные));значение=ir.GlobalVariable(self.модуль,тип,name=f".str.{self._счёт}");self._счёт+=1;значение.linkage="internal";значение.global_constant=True;значение.initializer=ir.Constant(тип,данные);return значение
+ def _указ(self,b,значение):ноль=ir.Constant(I32,0);return b.gep(значение,[ноль,ноль],inbounds=True)
+ def _ц64(self,значение):return self.строитель.zext(значение,ЦЕЛОЕ) if значение.type==БУЛЕВ else значение
+ def сгенерировать(self,программа):
+  self._фмт_число=self._строка("%lld\n");self._фмт_рез=self._строка("Результат старт(): %lld\n");self._фмт_строка=self._строка("%s\n")
+  for ф in программа.функции:self.функции[ф.имя]=ir.Function(self.модуль,ir.FunctionType(ЦЕЛОЕ,[ЦЕЛОЕ]*len(ф.параметры)),name=_символ("entry" if ф.имя=="старт" else "fn",ф.имя))
+  for ф in программа.функции:self._функция(ф)
+  self._главная();текст=str(self.модуль)
+  try:модуль=llvm.parse_assembly(текст);модуль.verify()
+  except Exception as ошибка:raise ОшибкаКодогена(f"LLVM verification failed: {ошибка}") from ошибка
+  return текст
+ def _главная(self):
+  функция=ir.Function(self.модуль,ir.FunctionType(I32,[]),name="main");b=ir.IRBuilder(функция.append_basic_block("entry"));рез=b.call(self.функции["старт"],[]);b.call(self.printf,[self._указ(b,self._фмт_рез),рез]);b.ret(I32(0))
+ def _функция(self,узел):
+  функция=self.функции[узел.имя];self.строитель=ir.IRBuilder(функция.append_basic_block("entry"));self.скоуп={}
+  for аргумент,имя in zip(функция.args,узел.параметры):ячейка=self.строитель.alloca(ЦЕЛОЕ,name=имя);self.строитель.store(аргумент,ячейка);self.скоуп[имя]=ячейка
+  self._тело(узел.тело)
+  if not self.строитель.block.is_terminated:self.строитель.ret(ЦЕЛОЕ(0))
+ def _тело(self,тело):
+  for у in тело:
+   if self.строитель.block.is_terminated:break
+   self._утверждение(у)
+ def _утверждение(self,у):
+  if isinstance(у,Вернуть):self.строитель.ret(self._ц64(self._выражение(у.значение)))
+  elif isinstance(у,Пусть):ячейка=self.строитель.alloca(ЦЕЛОЕ,name=у.имя);self.строитель.store(self._ц64(self._выражение(у.значение)),ячейка);self.скоуп[у.имя]=ячейка
+  elif isinstance(у,Присвоить):self.строитель.store(self._ц64(self._выражение(у.значение)),self.скоуп[у.имя])
+  elif isinstance(у,Если):self._если(у)
+  elif isinstance(у,Пока):self._пока(у)
+  else:self._выражение(у)
+ def _если(self,у):
+  условие=self._булев(self._выражение(у.условие));ф=self.строитель.function;тогда=ф.append_basic_block("if.then");иначе=ф.append_basic_block("if.else") if у.иначе else None;конец=ф.append_basic_block("if.end");self.строитель.cbranch(условие,тогда,иначе or конец);self.строитель.position_at_end(тогда);self._тело(у.тогда)
+  if not self.строитель.block.is_terminated:self.строитель.branch(конец)
+  if иначе:
+   self.строитель.position_at_end(иначе);self._тело(у.иначе)
+   if not self.строитель.block.is_terminated:self.строитель.branch(конец)
+  self.строитель.position_at_end(конец)
+ def _пока(self,у):
+  ф=self.строитель.function;условие=ф.append_basic_block("loop.cond");тело=ф.append_basic_block("loop.body");выход=ф.append_basic_block("loop.exit");self.строитель.branch(условие);self.строитель.position_at_end(условие);self.строитель.cbranch(self._булев(self._выражение(у.условие)),тело,выход);self.строитель.position_at_end(тело);self._тело(у.тело)
+  if not self.строитель.block.is_terminated:self.строитель.branch(условие)
+  self.строитель.position_at_end(выход)
+ def _выражение(self,у):
+  if isinstance(у,Число):return ЦЕЛОЕ(у.значение)
+  if isinstance(у,Булево):return БУЛЕВ(1 if у.значение else 0)
+  if isinstance(у,Строка):raise ОшибкаКодогена("Строка допустима только как литерал печать")
+  if isinstance(у,Имя):return self.строитель.load(self.скоуп[у.имя],name=у.имя)
+  if isinstance(у,Бинарный):
+   л=self._ц64(self._выражение(у.слева));п=self._ц64(self._выражение(у.справа));операции={"+":self.строитель.add,"-":self.строитель.sub,"*":self.строитель.mul,"/":self.строитель.sdiv}
+   return операции[у.оп](л,п) if у.оп in операции else self.строитель.icmp_signed(у.оп,л,п)
+  if isinstance(у,Вызов):
+   if у.имя=="печать":
+    значение=у.аргументы[0]
+    if isinstance(значение,Строка):текст=self._строка(значение.значение);self.строитель.call(self.printf,[self._указ(self.строитель,self._фмт_строка),self._указ(self.строитель,текст)])
+    else:self.строитель.call(self.printf,[self._указ(self.строитель,self._фмт_число),self._ц64(self._выражение(значение))])
+    return ЦЕЛОЕ(0)
+   аргументы=[self._ц64(self._выражение(а)) for а in у.аргументы];цель=self.функции.get(у.имя) or self._внешняя(у.имя,len(аргументы));return self.строитель.call(цель,аргументы)
+  raise ОшибкаКодогена(f"Неизвестный AST {type(у).__name__}")
+ def _булев(self,значение):return значение if значение.type==БУЛЕВ else self.строитель.icmp_signed("!=",значение,ЦЕЛОЕ(0))
