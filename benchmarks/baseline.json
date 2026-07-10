@@ -1,0 +1,8 @@
+{
+  "compile": {"median_ms": 1.3997, "p95_ms": 2.3209, "rounds": 40},
+  "ethical_analysis": {"median_ms": 0.1574, "p95_ms": 0.2369, "rounds": 80},
+  "mcp_scan": {"median_ms": 0.3683, "p95_ms": 0.4935, "rounds": 120},
+  "platform": "Linux-6.17.0-1018-azure-x86_64-with-glibc2.39",
+  "python": "3.11.15",
+  "schema": "yadro-benchmark-1.0"
+}
