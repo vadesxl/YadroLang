@@ -1,17 +1,13 @@
 name: Регрессионные тесты компилятора
-
 on:
   push:
     branches: [main]
   pull_request:
-
 permissions:
   contents: read
-
 concurrency:
   group: regression-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-
 jobs:
   test:
     timeout-minutes: 10
@@ -21,25 +17,10 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: pip
       - run: python -m pip install --disable-pip-version-check -r requirements.txt
-      - name: Run regression suite
-        shell: bash
-        run: |
-          set +e
-          python -m unittest discover -s tests -v > test-output.txt 2>&1
-          code=$?
-          cat test-output.txt
-          if [ $code -ne 0 ]; then
-            python - <<'PY'
-          from pathlib import Path
-          text = Path('test-output.txt').read_text(encoding='utf-8', errors='replace')
-          text = text.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
-          print(f'::error title=Regression suite failed::{text}')
-          PY
-            exit $code
-          fi
+      - run: python -m unittest discover -s tests -v
