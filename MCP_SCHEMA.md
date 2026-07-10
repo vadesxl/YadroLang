@@ -1,9 +1,10 @@
-# Схема Yadro MCP tool graph v1.0
+# Yadro Guard MCP security manifest v1.0
 
-Это собственная схема анализа Yadro, не универсальный импорт всех MCP manifest.
+Это **собственная статическая security-схема Yadro Guard**, а не универсальный импорт любого MCP server config.
 
-```json
-{"version":"1.0","tools":[{"name":"crm.читать","labels":["ПДн"]},{"name":"сеть.отправить","capabilities":["ДоступСети"]}],"flows":[["crm.читать","сеть.отправить"]]}
-```
+Корневые поля: `version`, `tools`, `flows`. Неизвестные поля отклоняются. Tool содержит уникальное `name`, `labels`, `sanitizes`, `capabilities`.
 
-Tool может иметь `labels`, `sanitizes`, `capabilities`. `flows` содержит направленные пары имён. Сканер проверяет дубли и неизвестные tools, вычисляет bounded fixpoint на циклах, блокирует чувствительные данные у privileged capabilities и отмечает три и более опасных capability как excessive agency.
+Метки: ПДн, Финансы, Здоровье, УчетныеДанные, Локация.
+Capabilities: ДоступСети, ЗаписьДиска, ЗаписьБД, ЧтениеБД, ВыполнениеИнструмента, ДоступСекретов, ДоступЛог.
+
+Flows задаются рёбрами `[source, target]`. Циклы поддерживаются bounded fixpoint конечной решётки. Результат детерминирован и доступен как text, JSON или SARIF 2.1.0. Неизвестные tools, edges, labels, capabilities, duplicate tools и fields отклоняются.

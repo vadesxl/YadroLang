@@ -1,7 +1,6 @@
 [build-system]
 requires = ["setuptools>=75"]
 build-backend = "setuptools.build_meta"
-
 [project]
 name = "yadro-guard-ru"
 version = "2.1.0"
@@ -10,10 +9,8 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = ["llvmlite==0.43.0"]
 license = {text = "GPL-3.0-only"}
-
 [project.scripts]
-yadro-guard = "src.guard:main"
-yadro-guard-mcp = "src.mcp_guard:main"
-
+yadro-guard = "src.guard_cli:main"
+yadro-guard-mcp = "src.mcp_guard_v2:main"
 [tool.setuptools.packages.find]
 include = ["src*"]
