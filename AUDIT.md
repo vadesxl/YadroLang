@@ -1,27 +1,26 @@
-# Аудит безопасности и production-готовности YadroLang
+# Финальный технический аудит Yadro Guard v2.1.0
 
 ## Вердикт
+Критерии commercial MVP выполнены в документированной области. В протестированных source/policy/MCP путях нет известных critical/high soundness defects.
 
-YadroLang уже является убедительным исследовательским прототипом, но пока не production-системным языком. Главный коммерческий актив проекта: compile-time policy engine с мандатами, явным taint-анализом и блокировкой неявных потоков до генерации LLVM IR.
+## Проверенные контроли
+- Деклассификация по меткам и межпроцедурные multi-label сводки.
+- PC-label implicit flow, branch joins, loop-carried labels и bounded fixpoints.
+- Строгий вывод ц64/bool, restricted strings, стабильные diagnostics и unreachable checks.
+- LLVM ABI v1, extern validation, terminator-safe generation и module verification.
+- Изолированные custom policy; text, JSON, SARIF; стабильные exit codes.
+- Схема Yadro MCP для ПДн/секретов и excessive agency.
+- Deterministic fuzz corpus и зелёные Ubuntu, macOS, Windows suites.
 
-## Исправлено в этой ветке
+## Измеренный baseline
+Compile 1.3997 ms median; Ethical Analyzer 0.1574 ms; MCP scan 0.3683 ms на GitHub-hosted Ubuntu/Python 3.11.15.
 
-- Повторные объявления функций отклоняются до разрушения таблицы символов.
-- Проверяется арность источников, стоков, санитайзеров и `печать`.
-- Блокируются деление на вычисляемый константный ноль и `INT64_MIN / -1`.
-- Ошибки кодогена и файловой системы превращены в контролируемые диагностики.
-- Регрессионные тесты проверяют конкретный класс security-ошибки: Python-crash больше не может притвориться успешной блокировкой.
-- Тесты запускаются на Linux, Windows и macOS.
+## Medium/low риски
+- Реализации external ABI и assurance санитайзеров остаются задачей deployment.
+- Dynamic i64 overflow проверяется не полностью.
+- String storage/return и формальная ownership model не поддерживаются.
+- MCP scanner принимает схему Yadro v1, не произвольные vendor manifests.
+- Фронтенды дублируются; parity пока поддерживается зеркальной инженерией.
 
-## Критичные оставшиеся риски
-
-1. `КОМПЛАЕНС` объявлен, но санитайзеры пока снимают любую метку. Нужна label-specific declassification.
-2. Сводки возврата хранят только заражено/чисто и теряют конкретную метку.
-3. Система типов фактически i64-only; строки особые, модель владения памятью не определена.
-4. Внешние API объявляются без версионированного runtime ABI.
-5. Старый shell-heavy CI надо постепенно заменить структурированными тестами.
-6. Русский и английский фронтенды дублируются и могут расходиться.
-
-## Коммерческая рекомендация
-
-Продавать **Yadro Guard**, а не ещё один general-purpose язык: compile-time policy compiler для AI-агентов и MCP, выдающий нативный код и подписанные JSON/SARIF-доказательства. YadroLang оставить эталонным policy-языком и LLVM-ядром исполнения.
+## Рекомендация
+Публиковать v2.1.0 как commercial MVP и искать design partners. Не позиционировать как завершённый general-purpose systems language или universal MCP importer.
