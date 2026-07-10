@@ -1,5 +1,11 @@
 # Benchmarks
 
-`python benchmarks/run.py` измеряет median и p95 в миллисекундах для compile-to-verified-IR, Ethical Analyzer и MCP graph scan. CI использует GitHub-hosted Ubuntu, Python 3.11 и pinned llvmlite 0.43.0.
+Измерено на GitHub-hosted Ubuntu, Python 3.11.15, pinned llvmlite 0.43.0:
 
-Цифры являются инженерным baseline, а не hardware-independent обещанием. JSON schema: `yadro-benchmark-1.0`; измеренный baseline фиксируется после CI.
+| Путь | Median | p95 | Rounds |
+|---|---:|---:|---:|
+| Компиляция до verified LLVM IR | 1.3997 ms | 2.3209 ms | 40 |
+| Ethical Analyzer | 0.1574 ms | 0.2369 ms | 80 |
+| MCP graph scan | 0.3683 ms | 0.4935 ms | 120 |
+
+Воспроизведение: `python -m benchmarks.run`. Это инженерный baseline, не hardware-independent обещание. Данные: `benchmarks/baseline.json`, schema `yadro-benchmark-1.0`.
