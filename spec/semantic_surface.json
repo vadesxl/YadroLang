@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "language": "ru",
+  "surface": {
+    "keywords": ["function", "return", "let", "if", "else", "while", "requires"],
+    "ast_nodes": ["program", "function", "let", "return", "if", "while", "call", "binary", "number", "string", "variable"],
+    "types": ["i64", "bool", "string"],
+    "builtins": ["print", "source", "sink", "sanitizer"],
+    "capabilities": ["network", "filesystem", "model", "personal_data"],
+    "diagnostic_families": ["lexer", "parser", "semantic", "type", "ethical", "codegen"],
+    "cli_commands": ["scan", "compile", "audit", "policy_check", "version"],
+    "exit_codes": {"success": 0, "finding": 2, "source_error": 3, "internal_error": 4}
+  },
+  "localized": {
+    "function": "функ",
+    "return": "вернуть",
+    "let": "пусть",
+    "if": "если",
+    "else": "иначе",
+    "while": "пока",
+    "requires": "требует"
+  }
+}
