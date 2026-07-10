@@ -1,15 +1,25 @@
 #!/usr/bin/env python3
-"""Compare two localized Yadro semantic manifests without comparing spellings."""
+"""Compare localized Yadro semantic manifests without comparing spellings."""
 import json
 import sys
 from pathlib import Path
 
+REQUIRED={"schema_version","language","surface","localized"}
+
+def configure_utf8(stream):
+ reconfigure=getattr(stream,"reconfigure",None)
+ if callable(reconfigure):
+  try:reconfigure(encoding="utf-8",errors="backslashreplace")
+  except (AttributeError,ValueError,OSError):pass
+ return stream
+
 def load(path):
  data=json.loads(Path(path).read_text(encoding="utf-8"))
- required={"schema_version","language","surface","localized"}
- if set(data)!=required:raise ValueError(f"{path}: expected top-level keys {sorted(required)}")
+ if not isinstance(data,dict) or set(data)!=REQUIRED:raise ValueError(f"{path}: expected top-level keys {sorted(REQUIRED)}")
+ if not isinstance(data["surface"],dict):raise ValueError(f"{path}: surface must be an object")
+ if not isinstance(data["localized"],dict):raise ValueError(f"{path}: localized must be an object")
  keywords=data["surface"].get("keywords")
- if not isinstance(keywords,list) or len(keywords)!=len(set(keywords)):raise ValueError(f"{path}: keywords must be a unique list")
+ if not isinstance(keywords,list) or not all(isinstance(item,str) for item in keywords) or len(keywords)!=len(set(keywords)):raise ValueError(f"{path}: keywords must be a unique string list")
  if set(data["localized"])!=set(keywords):raise ValueError(f"{path}: localized keys must exactly match semantic keywords")
  if not all(isinstance(value,str) and value for value in data["localized"].values()):raise ValueError(f"{path}: localized spellings must be non-empty strings")
  return data
@@ -24,7 +34,13 @@ def main(left_path,right_path):
   raise ValueError(f"semantic surfaces differ\nLEFT:\n{left_text}\nRIGHT:\n{right_text}")
  print(f"semantic parity OK: {left['language']} <-> {right['language']}")
 
-if __name__=="__main__":
- if len(sys.argv)!=3:raise SystemExit("usage: check_parity.py LEFT.json RIGHT.json")
- try:main(sys.argv[1],sys.argv[2])
- except (OSError,json.JSONDecodeError,ValueError) as error:print(f"parity error: {error}",file=sys.stderr);raise SystemExit(1)
+def cli(argv=None):
+ argv=sys.argv[1:] if argv is None else argv
+ configure_utf8(sys.stdout);configure_utf8(sys.stderr)
+ if len(argv)!=2:
+  print("usage: check_parity.py LEFT.json RIGHT.json",file=sys.stderr);return 2
+ try:main(argv[0],argv[1]);return 0
+ except (OSError,json.JSONDecodeError,ValueError) as error:
+  print(f"parity error: {error}",file=sys.stderr);return 1
+
+if __name__=="__main__":raise SystemExit(cli())
