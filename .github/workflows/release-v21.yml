@@ -1,0 +1,16 @@
+name: Publish v2.1.0
+on:
+  push:
+    branches: [main]
+    paths: [CHANGELOG.md, .github/workflows/release-v21.yml]
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with: {fetch-depth: 0}
+      - env: {GH_TOKEN: "${{ github.token }}"}
+        run: |
+          gh release view v2.1.0 >/dev/null 2>&1 || gh release create v2.1.0 --target main --title "Yadro Guard v2.1.0 - Commercial MVP" --notes-file CHANGELOG.md
