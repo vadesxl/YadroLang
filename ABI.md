@@ -1,9 +1,13 @@
-# LLVM ABI v1
+# Нативный ABI v1
 
-- User symbols: `yadro_fn_v1_*`.
-- Entry implementation: `yadro_entry_v1_*`, внешний wrapper остаётся C `main`.
-- External symbols: `yadro_ext_v1_*`.
-- Хранение, аргументы и возвраты используют i64.
-- Промежуточные сравнения используют i1 и расширяются на ABI-границах.
-- Строки являются внутренними constant byte arrays и пока разрешены только в прямом `печать`.
-- Один external policy symbol имеет одну arity на модуль.
+Yadro Guard генерирует C-compatible collision-resistant symbols:
+
+- пользовательские функции: `yadro_fn_<readable>_<sha256-prefix>`
+- policy/runtime функции: `yadro_abi_v1_<readable>_<sha256-prefix>`
+- process entry: `main`
+
+Readable-часть служит диагностике; 16 hex SHA-256 связывает полное UTF-8 имя. Параметры и возвраты используют выведенные LLVM scalar types. Policy sources/sinks/sanitizers сейчас возвращают signed i64.
+
+Один external source name имеет одну сигнатуру на модуль. Несовместимость блокируется CodeGen. Native smoke компилирует Yadro, создаёт объектник, линкует C runtime stubs, запускает binary и проверяет результат на Ubuntu, Windows и macOS.
+
+Runtime stubs являются тестами, а не trusted sanitizer. Деклассификация остаётся compile-time policy решением.
