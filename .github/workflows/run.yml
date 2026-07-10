@@ -123,3 +123,66 @@ jobs:
               echo "ПРОВАЛ: $f скомпилировался!"; exit 1
             else echo "OK: $f отклонён."; fi
           done
+
+      - name: v2.0 - Block implicit flow leak
+        run: |
+          if python -m src.main examples/неявный_поток_утечка.яд; then
+            echo "FAIL: implicit flow leak compiled!"; exit 1
+          else echo "OK: implicit flow leak blocked."; fi
+
+      - name: v2.0 - Block implicit flow nested
+        run: |
+          if python -m src.main examples/неявный_поток_вложенный.яд; then
+            echo "FAIL: nested implicit flow compiled!"; exit 1
+          else echo "OK: nested implicit flow blocked."; fi
+
+      - name: v2.0 - Accept implicit flow safe
+        run: python -m src.main examples/неявный_поток_безопасный.яд --ir
+
+      - name: v2.0 - Block multi-label PII leak
+        run: |
+          if python -m src.main examples/мультиметка_пдн.яд; then
+            echo "FAIL: PII multi-label leak compiled!"; exit 1
+          else echo "OK: PII multi-label leak blocked."; fi
+
+      - name: v2.0 - Block multi-label financial leak
+        run: |
+          if python -m src.main examples/мультиметка_финансы.яд; then
+            echo "FAIL: financial multi-label leak compiled!"; exit 1
+          else echo "OK: financial multi-label leak blocked."; fi
+
+      - name: v2.0 - Block multi-label health leak
+        run: |
+          if python -m src.main examples/мультиметка_здоровье.яд; then
+            echo "FAIL: health multi-label leak compiled!"; exit 1
+          else echo "OK: health multi-label leak blocked."; fi
+
+      - name: v2.0 - Block multi-label credentials leak
+        run: |
+          if python -m src.main examples/мультиметка_учетные.яд; then
+            echo "FAIL: credentials multi-label leak compiled!"; exit 1
+          else echo "OK: credentials multi-label leak blocked."; fi
+
+      - name: v2.0 - Block leak chain
+        run: |
+          if python -m src.main examples/утечка_цепочка.яд; then
+            echo "FAIL: leak chain compiled!"; exit 1
+          else echo "OK: leak chain blocked."; fi
+
+      - name: v2.0 - Block location leak
+        run: |
+          if python -m src.main examples/утечка_локации.яд; then
+            echo "FAIL: location leak compiled!"; exit 1
+          else echo "OK: location leak blocked."; fi
+
+      - name: v2.0 - Block DB write leak
+        run: |
+          if python -m src.main examples/бд_запись_утечка.яд; then
+            echo "FAIL: DB write leak compiled!"; exit 1
+          else echo "OK: DB write leak blocked."; fi
+
+      - name: v2.0 - Block log PII leak
+        run: |
+          if python -m src.main examples/лог_пдн_утечка.яд; then
+            echo "FAIL: log PII leak compiled!"; exit 1
+          else echo "OK: log PII leak blocked."; fi
