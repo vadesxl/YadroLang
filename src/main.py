@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Конвейер YadroLang: парсер, семантика, типы, этика, LLVM."""
-import sys
+import os,shutil,subprocess,sys,tempfile
 from llvmlite import binding as llvm
 from src.лексер import Лексер,ОшибкаЛексера
 from src.синтаксис import Парсер,ОшибкаПарсера,Вызов,Число,Бинарный
@@ -20,15 +20,15 @@ def _проверить_уникальность_функций(ast):
   if ф.имя in известные:raise ОшибкаСемантики(f"Функция '{ф.имя}' объявлена повторно (строка {ф.строка}).")
   if ф.имя=="printf" or ф.имя.startswith("yadro_"):raise ОшибкаСемантики(f"Функция '{ф.имя}' конфликтует с runtime ABI (строка {ф.строка}).")
   известные.add(ф.имя)
-АРНОСТЬ_СИСТЕМНЫХ_API={**{и:0 for и in ИСТОЧНИКИ},**{и:1 for и in САНИТАЙЗЕРЫ},**{и:1 for и in СТОКИ},"печать":1};СИСТЕМНЫЕ_API=set(АРНОСТЬ_СИСТЕМНЫХ_API)
+АРНОСТЬ_СИСТЕМНЫХ_API={**{и:0 for и in ИСТОЧНИКИ},**{и:1 for и in САНИТАЙЗЕРЫ},**{и:1 for и in СТОКИ},"печать":1}
 def _собрать(узел,тип,вывод):
  if isinstance(узел,тип):вывод.append(узел)
  значения=getattr(узел,"__dict__",None)
- if not значения:return
- for значение in значения.values():
-  if isinstance(значение,list):
-   for элемент in значение:_собрать(элемент,тип,вывод)
-  elif hasattr(значение,"__dict__"):_собрать(значение,тип,вывод)
+ if значения:
+  for значение in значения.values():
+   if isinstance(значение,list):
+    for элемент in значение:_собрать(элемент,тип,вывод)
+   elif hasattr(значение,"__dict__"):_собрать(значение,тип,вывод)
 def _проверить_вызовы(ast):
  арность={ф.имя:len(ф.параметры) for ф in ast.функции}
  for ф in ast.функции:
@@ -61,17 +61,28 @@ def _проверить_выражения(ast):
    if делитель==0:raise ОшибкаСемантики(f"Деление на ноль (строка {б.строка}).")
    if делимое==I64_МИН and делитель==-1:raise ОшибкаСемантики(f"Переполнение знакового i64 (строка {б.строка}).")
 def компилировать(исходник,выводить_ir=False):
- ast=Парсер(Лексер(исходник).токены()).разобрать();_проверить_уникальность_функций(ast);_проверить_точку_входа(ast);_проверить_вызовы(ast);_проверить_выражения(ast)
- ПроверкаТипов(set(ИСТОЧНИКИ)|set(СТОКИ)|set(САНИТАЙЗЕРЫ)|{"печать"}).проверить(ast);ЭтическийАнализатор().проверить(ast);ir=Кодоген().сгенерировать(ast)
+ ast=Парсер(Лексер(исходник).токены()).разобрать();_проверить_уникальность_функций(ast);_проверить_точку_входа(ast);_проверить_вызовы(ast);_проверить_выражения(ast);ПроверкаТипов(set(ИСТОЧНИКИ)|set(СТОКИ)|set(САНИТАЙЗЕРЫ)|{"печать"}).проверить(ast);ЭтическийАнализатор().проверить(ast);ir=Кодоген().сгенерировать(ast)
  if выводить_ir:print(ir)
  return ir
+def _создать_windows_coff(модуль,выход,triple):
+ clang=shutil.which("clang")
+ if not clang:raise RuntimeError("Для нативного Windows object нужен clang из поддерживаемого LLVM toolchain")
+ with tempfile.TemporaryDirectory() as папка:
+  путь_ir=os.path.join(папка,"yadro.ll")
+  with open(путь_ir,"w",encoding="utf-8",newline="\n") as файл_ir:файл_ir.write(str(модуль))
+  результат=subprocess.run([clang,"-target",triple,"-x","ir","-c",путь_ir,"-o",выход],capture_output=True,text=True)
+  if результат.returncode:raise RuntimeError(f"clang COFF emission завершился ошибкой: {результат.stderr.strip()}")
+ with open(выход,"rb") as файл:
+  if файл.read(2)!=b"\x64\x86":raise RuntimeError("clang не создал AMD64 COFF object")
 def собрать_нативно(ir_код,выход="ядро.o"):
  for инициализатор in (getattr(llvm,"initialize",None),getattr(llvm,"initialize_native_target",None),getattr(llvm,"initialize_native_asmprinter",None)):
   if инициализатор:
    try:инициализатор()
    except Exception:pass
- модуль=llvm.parse_assembly(ir_код);модуль.verify();цель=llvm.Target.from_default_triple().create_target_machine()
- with open(выход,"wb") as файл:файл.write(цель.emit_object(модуль))
+ triple=llvm.get_default_triple();target=llvm.Target.from_triple(triple);machine=target.create_target_machine();модуль=llvm.parse_assembly(ir_код);модуль.triple=triple;модуль.data_layout=str(machine.target_data);модуль.verify()
+ if os.name=="nt":_создать_windows_coff(модуль,выход,triple)
+ else:
+  with open(выход,"wb") as файл:файл.write(machine.emit_object(модуль))
  print(f"[ЯДРО] Нативный объектник: {выход}")
 def главная():
  if len(sys.argv)<2:print("Использование: python -m src.main файл.яд [--ir]");raise SystemExit(1)
