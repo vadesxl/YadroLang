@@ -1,0 +1,28 @@
+name: Публикация v2.0.0
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - CHANGELOG.md
+      - .github/workflows/release-v2.yml
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Опубликовать релиз один раз
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view v2.0.0 >/dev/null 2>&1; then
+            echo "v2.0.0 already exists"
+          else
+            gh release create v2.0.0 --target main --title "YadroLang v2.0.0 - Усиление компилятора" --notes-file CHANGELOG.md
+          fi
