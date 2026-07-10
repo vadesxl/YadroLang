@@ -1,16 +1,13 @@
 name: Package smoke
 on:
-  pull_request:
   push:
     branches: [main]
+  pull_request:
 permissions:
   contents: read
-concurrency:
-  group: package-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
 jobs:
-  install:
-    timeout-minutes: 10
+  wheel:
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -20,6 +17,15 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
         with: {python-version: "3.11", cache: pip}
-      - run: python -m pip install --disable-pip-version-check .
-      - run: yadro-guard --version
-      - run: python -m unittest tests.test_packaging_subprocess -v
+      - run: python -m pip install --disable-pip-version-check build
+      - run: python -m build
+      - name: Install wheel outside checkout
+        shell: bash
+        run: |
+          python -m venv "$RUNNER_TEMP/yadro-venv"
+          if [ "$RUNNER_OS" = "Windows" ]; then PY="$RUNNER_TEMP/yadro-venv/Scripts/python.exe"; BIN="$RUNNER_TEMP/yadro-venv/Scripts"; else PY="$RUNNER_TEMP/yadro-venv/bin/python"; BIN="$RUNNER_TEMP/yadro-venv/bin"; fi
+          "$PY" -m pip install --disable-pip-version-check dist/*.whl
+          cd "$RUNNER_TEMP"
+          "$BIN/yadro-guard" --version
+          "$BIN/yadro-guard" version
+          "$BIN/yadro-guard" mcp scan "$GITHUB_WORKSPACE/tests/fixtures/mcp-clean.json" --format json

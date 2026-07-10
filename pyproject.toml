@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=75"]
+requires = ["setuptools>=75", "wheel"]
 build-backend = "setuptools.build_meta"
 [project]
 name = "yadro-guard-ru"
