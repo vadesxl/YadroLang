@@ -9,9 +9,12 @@ class ProofSealAdversarialTests(unittest.TestCase):
   with self.assertRaises(ProofSealError):TrustState("signed","verified")
   with self.assertRaises(ProofSealError):SubjectBinding("future",LLVM_NORMALIZATION_VERSION,ZERO,ZERO,ZERO,ZERO,"x","elf-object")
   with self.assertRaises(ProofSealError):SubjectBinding(POLICY_VERSION,"future",ZERO,ZERO,ZERO,ZERO,"x","elf-object")
- def test_invalid_span(self):
-  for start,end,ordinal in ((-1,0,0),(2,1,0),(0,1,-1),(True,1,0)):
+ def test_invalid_span_and_safe_integer_overflow(self):
+  invalid=((-1,0,0),(2,1,0),(0,1,-1),(True,1,0),(0,MAX_SAFE_INTEGER+1,0),(0,1,MAX_SAFE_INTEGER+1))
+  for start,end,ordinal in invalid:
    with self.subTest(values=(start,end,ordinal)),self.assertRaises(ProofSealError):SourceSpan("x",start,end,ordinal)
+  for value in (9_007_199_254_740_992,9_999_999_999_999_999,18_446_744_073_709_551_615,False,1.0):
+   with self.subTest(value=value),self.assertRaises(ProofSealError):FixpointEvidence("bounded-monotone-1.0",(),value,MAX_SAFE_INTEGER)
  def test_duplicate_sets_and_ids(self):
   with self.assertRaises(ProofSealError):canonical_strings(("a","a"),"labels")
   assumption=make_assumption("sym","i64()",None,"identity",False,"call",False)
