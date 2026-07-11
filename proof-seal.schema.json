@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://yadrolang.dev/schemas/proof-seal-1.0.json",
+  "title": "Yadro Proof Seal 1.0 design schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "compiler", "subject", "analysis", "seal_sha256"],
+  "properties": {
+    "schema": {"const": "yadro-proof-seal-1.0"},
+    "compiler": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "frontend", "semantic_surface", "evidence_algorithm"],
+      "properties": {
+        "name": {"const": "yadro-guard"},
+        "version": {"type": "string", "minLength": 1, "maxLength": 64},
+        "frontend": {"enum": ["ru", "en"]},
+        "semantic_surface": {"type": "string", "minLength": 1, "maxLength": 32},
+        "evidence_algorithm": {"const": "yadro-evidence-1.0"}
+      }
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_sha256", "policy_sha256", "llvm_sha256", "artifact_sha256", "target_triple", "artifact_kind"],
+      "properties": {
+        "source_sha256": {"$ref": "#/$defs/sha256"},
+        "policy_sha256": {"$ref": "#/$defs/sha256"},
+        "llvm_sha256": {"$ref": "#/$defs/sha256"},
+        "artifact_sha256": {"$ref": "#/$defs/sha256"},
+        "target_triple": {"type": "string", "minLength": 1, "maxLength": 128},
+        "artifact_kind": {"enum": ["elf-object", "macho-object", "coff-object"]}
+      }
+    },
+    "analysis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entry_points", "call_sites", "assumptions", "fixpoint"],
+      "properties": {
+        "entry_points": {"type": "array", "maxItems": 256, "uniqueItems": true, "items": {"$ref": "#/$defs/name"}},
+        "call_sites": {"type": "array", "maxItems": 10000, "items": {"$ref": "#/$defs/callSite"}},
+        "assumptions": {"type": "array", "maxItems": 2000, "items": {"$ref": "#/$defs/assumption"}},
+        "fixpoint": {"$ref": "#/$defs/fixpoint"}
+      }
+    },
+    "seal_sha256": {"$ref": "#/$defs/sha256"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "name": {"type": "string", "minLength": 1, "maxLength": 256},
+    "smallSet": {"type": "array", "maxItems": 32, "uniqueItems": true, "items": {"$ref": "#/$defs/name"}},
+    "span": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["module_path", "start_byte", "end_byte", "ordinal"],
+      "properties": {
+        "module_path": {"type": "string", "minLength": 1, "maxLength": 512, "pattern": "^(?!/)(?![A-Za-z]:)[^\\\\]*$"},
+        "start_byte": {"type": "integer", "minimum": 0},
+        "end_byte": {"type": "integer", "minimum": 0},
+        "ordinal": {"type": "integer", "minimum": 0}
+      }
+    },
+    "callSite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "caller", "callee", "span", "required_capabilities", "declared_capabilities", "incoming_labels", "outgoing_labels", "sanitizers", "declassified_labels", "policy_rules", "implicit_labels", "assumption_ids", "reachable_entries", "status"],
+      "properties": {
+        "id": {"$ref": "#/$defs/sha256"},
+        "caller": {"$ref": "#/$defs/name"},
+        "callee": {"$ref": "#/$defs/name"},
+        "span": {"$ref": "#/$defs/span"},
+        "required_capabilities": {"$ref": "#/$defs/smallSet"},
+        "declared_capabilities": {"$ref": "#/$defs/smallSet"},
+        "incoming_labels": {"$ref": "#/$defs/smallSet"},
+        "outgoing_labels": {"$ref": "#/$defs/smallSet"},
+        "sanitizers": {"$ref": "#/$defs/smallSet"},
+        "declassified_labels": {"$ref": "#/$defs/smallSet"},
+        "policy_rules": {"$ref": "#/$defs/smallSet"},
+        "implicit_labels": {"$ref": "#/$defs/smallSet"},
+        "assumption_ids": {"$ref": "#/$defs/smallSet"},
+        "reachable_entries": {"type": "array", "maxItems": 256, "uniqueItems": true, "items": {"$ref": "#/$defs/name"}},
+        "status": {"const": "allowed"}
+      }
+    },
+    "assumption": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "symbol", "abi_signature", "capability", "taint_transform", "trusted_sanitizer", "lifetime", "no_retain", "implementation_sha256"],
+      "properties": {
+        "id": {"$ref": "#/$defs/sha256"},
+        "symbol": {"$ref": "#/$defs/name"},
+        "abi_signature": {"type": "string", "minLength": 1, "maxLength": 512},
+        "capability": {"type": ["string", "null"], "maxLength": 256},
+        "taint_transform": {"type": "string", "minLength": 1, "maxLength": 512},
+        "trusted_sanitizer": {"type": "boolean"},
+        "lifetime": {"type": "string", "minLength": 1, "maxLength": 512},
+        "no_retain": {"type": "boolean"},
+        "implementation_sha256": {"oneOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]}
+      }
+    },
+    "fixpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "lattice_labels", "updates", "bound"],
+      "properties": {
+        "algorithm": {"const": "bounded-monotone-1.0"},
+        "lattice_labels": {"$ref": "#/$defs/smallSet"},
+        "updates": {"type": "integer", "minimum": 0},
+        "bound": {"type": "integer", "minimum": 1}
+      }
+    }
+  }
+}
