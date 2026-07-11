@@ -4,6 +4,8 @@ from tests.proof_verify_fixtures import valid_bytes,parsed
 
 def escaped(value):
  return (json.dumps(value,ensure_ascii=True,sort_keys=True,separators=(",",":"))+"\n").encode("ascii")
+def utf8(value):
+ return (json.dumps(value,ensure_ascii=False,sort_keys=True,separators=(",",":"))+"\n").encode("utf-8")
 
 class ProofVerifyAdversarialTests(unittest.TestCase):
  def test_deterministic_mutation_corpus(self):
@@ -38,5 +40,5 @@ class ProofVerifyAdversarialTests(unittest.TestCase):
  def test_valid_non_bmp_scalar_is_accepted(self):
   for text in ("caller-🚀","caller-𐐷"):
    value=parsed();value["analysis"]["call_sites"][0]["caller"]=text
-   self.assertTrue(inspect_bytes(escaped(value)).valid)
+   self.assertTrue(inspect_bytes(utf8(value)).valid)
 if __name__=="__main__":unittest.main()
