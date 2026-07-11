@@ -4,21 +4,31 @@ on:
     paths:
       - spec/semantic_surface.json
       - tools/check_parity.py
+      - tools/check_validator_identity.py
       - tests/test_semantic_parity.py
+      - tests/test_semantic_workflow.py
+      - SEMANTIC_PARITY.md
       - .github/workflows/semantic-parity.yml
   push:
     branches: [main]
     paths:
       - spec/semantic_surface.json
       - tools/check_parity.py
+      - tools/check_validator_identity.py
+      - tests/test_semantic_parity.py
+      - tests/test_semantic_workflow.py
+      - SEMANTIC_PARITY.md
       - .github/workflows/semantic-parity.yml
   schedule:
     - cron: "17 4 * * 1"
   workflow_dispatch:
 permissions:
   contents: read
+env:
+  COUNTERPART_REPOSITORY: vadesxl/YadroLang-English
+  COUNTERPART_PIN: 522b86d7f64d476e1d7507256f02f8f9b3acffb5
 jobs:
-  parity:
+  snapshot-parity:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -27,19 +37,30 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@v5
         with:
-          repository: vadesxl/YadroLang-English
-          ref: 522b86d7f64d476e1d7507256f02f8f9b3acffb5
+          repository: ${{ env.COUNTERPART_REPOSITORY }}
+          ref: ${{ env.COUNTERPART_PIN }}
           path: counterpart
           persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
       - name: Verify validator identity
-        shell: python
-        run: |
-          import hashlib
-          from pathlib import Path
-          local=Path("tools/check_parity.py").read_bytes()
-          remote=Path("counterpart/tools/check_parity.py").read_bytes()
-          if hashlib.sha256(local).digest()!=hashlib.sha256(remote).digest():
-              raise SystemExit("parity validator drift: update both repositories together")
-          print("validator sha256",hashlib.sha256(local).hexdigest())
-      - name: Compare semantic surface contracts
+        shell: bash
+        run: python tools/check_validator_identity.py tools/check_parity.py counterpart/tools/check_parity.py
+      - name: Compare pinned semantic surface contracts
         run: python tools/check_parity.py spec/semantic_surface.json counterpart/spec/semantic_surface.json
+  pin-freshness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Compare pinned snapshot with counterpart main metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          head_sha="$(git ls-remote "https://github.com/${COUNTERPART_REPOSITORY}.git" refs/heads/main | awk '{print $1}')"
+          test "$head_sha" != ""
+          if [ "$head_sha" != "$COUNTERPART_PIN" ]; then
+            echo "::warning title=Semantic parity pin is stale::Pinned $COUNTERPART_PIN, counterpart main is $head_sha. Snapshot parity remains reproducible; coordinate and review a pin update."
+          else
+            echo "Semantic parity pin matches counterpart main."
+          fi
