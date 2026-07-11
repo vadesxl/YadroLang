@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://yadrolang.dev/schemas/proof-seal-1.0.json",
+  "$id": "urn:yadrolang:schema:proof-seal:1.0",
   "title": "Yadro Proof Seal 1.0 design schema",
   "type": "object",
   "additionalProperties": false,
@@ -10,13 +10,15 @@
     "compiler": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "version", "frontend", "semantic_surface", "evidence_algorithm"],
+      "required": ["name", "version", "frontend", "semantic_surface", "evidence_algorithm", "llvm_normalization", "llvm_compatibility"],
       "properties": {
         "name": {"const": "yadro-guard"},
         "version": {"type": "string", "minLength": 1, "maxLength": 64},
         "frontend": {"enum": ["ru", "en"]},
         "semantic_surface": {"type": "string", "minLength": 1, "maxLength": 32},
-        "evidence_algorithm": {"const": "yadro-evidence-1.0"}
+        "evidence_algorithm": {"const": "yadro-evidence-1.0"},
+        "llvm_normalization": {"const": "yadro-llvm-normalization-1.0"},
+        "llvm_compatibility": {"type": "string", "minLength": 1, "maxLength": 64}
       }
     },
     "subject": {
@@ -54,7 +56,7 @@
       "additionalProperties": false,
       "required": ["module_path", "start_byte", "end_byte", "ordinal"],
       "properties": {
-        "module_path": {"type": "string", "minLength": 1, "maxLength": 512, "pattern": "^(?!/)(?![A-Za-z]:)[^\\\\]*$"},
+        "module_path": {"type": "string", "minLength": 1, "maxLength": 512, "pattern": "^(?!/)(?![A-Za-z]:)(?!//)[^\\\\\-\\u001f\\u007f]+$"},
         "start_byte": {"type": "integer", "minimum": 0},
         "end_byte": {"type": "integer", "minimum": 0},
         "ordinal": {"type": "integer", "minimum": 0}

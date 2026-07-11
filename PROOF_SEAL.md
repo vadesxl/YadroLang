@@ -25,7 +25,7 @@ source -> parse -> semantic/types -> Ethical Checker -> immutable evidence
                                   canonical seal -> atomic write
 ```
 
-Valid-looking seal не создается при policy violation, LLVM verification failure или object emission failure. Final write использует temporary file в destination directory, flush, fsync where supported и atomic replace. Failure до replace удаляет temporary file.
+Valid-looking seal не создается при policy violation, LLVM verification failure или object emission failure. Final write использует temporary file в destination directory, flush, fsync where supported и atomic replace. Failure до replace удаляет temporary file. Symlink destinations and non-regular existing targets are rejected before creation and checked again immediately before replace.
 
 ## Deterministic core
 
@@ -34,7 +34,7 @@ Schema identifier: `yadro-proof-seal-1.0`.
 Canonical bytes:
 
 - UTF-8 without BOM;
-- all strings normalized to Unicode NFC before validation;
+- evidence strings must already be Unicode NFC, non-NFC input is rejected rather than silently rewritten;
 - JSON object keys sorted by Unicode code point;
 - compact separators `,` and `:`;
 - one trailing LF;
@@ -45,11 +45,13 @@ Canonical bytes:
 - arrays use semantic stable ordering defined by each field;
 - timestamps, hostnames, usernames and absolute paths are forbidden in deterministic core.
 
-Domain-separated seal digest:
+`seal_sha256` is not part of its own payload. To compute it, remove the top-level `seal_sha256` member, canonicalize the remaining object, then compute:
 
 ```text
-SHA-256("YADRO-PROOF-SEAL\0" || "1.0\0" || canonical_payload)
+SHA-256("YADRO-PROOF-SEAL\0" || "1.0\0" || canonical_payload_without_seal_sha256)
 ```
+
+Verifier rejects a document whose received bytes are not the canonical encoding of the parsed object, in addition to checking the digest. This prevents alternate encodings from sharing one logical payload.
 
 A SHA-256 digest is not a digital signature. An optional future signature envelope must use a reviewed standard such as DSSE/Sigstore and remain outside deterministic core.
 
@@ -74,14 +76,16 @@ Bounds are checked before allocating proportional nested structures. Malformed, 
 
 `subject` contains:
 
-- `source_sha256`: exact normalized source bytes used by compiler;
-- `policy_sha256`: canonical validated policy, not raw formatting;
-- `llvm_sha256`: normalized verified LLVM text;
+- `source_sha256`: exact source file bytes accepted by the compiler, before parsing; BOM and invalid UTF-8 are rejected;
+- `policy_sha256`: canonical validated effective policy, including built-in and invocation-local entries, not raw formatting;
+- `llvm_sha256`: verified LLVM text normalized by versioned `yadro-llvm-normalization-1.0`;
 - `artifact_sha256`: exact emitted object bytes;
 - `target_triple`: actual emission target;
 - `artifact_kind`: for example `elf-object`, `macho-object`, `coff-object`.
 
-Object digest is exact-byte binding. Reproducibility across different LLVM/clang versions, hosts or targets is not promised. LLVM digest supports semantic comparison only within the documented normalization version.
+`yadro-llvm-normalization-1.0` parses and verifies the module, emits canonical LLVM text through the pinned llvmlite/LLVM toolchain, normalizes LF line endings and appends one LF. Compiler and LLVM versions remain part of evidence because textual stability across LLVM versions is not promised.
+
+Object digest is exact-byte binding. Reproducibility across different LLVM/clang versions, hosts or targets is not promised. LLVM digest supports comparison only within the same documented normalization and LLVM compatibility versions.
 
 ## Stable call-site identity
 
@@ -97,9 +101,11 @@ Call-site ID:
 SHA-256("YADRO-CALL-SITE\0" || canonical_tuple)
 ```
 
-`normalized-span` uses module-relative slash-separated path and UTF-8 byte offsets. `ordinal` is preorder ordinal among effectful calls in the caller after parser normalization. Whitespace outside tokens does not change byte offsets only if frontend normalization explicitly maps spans; otherwise the seal honestly changes. Caller/callee readable names are diagnostic only, ABI symbols and hash bind identity.
+`module-id` is SHA-256 of exact accepted source bytes plus frontend identity, never an absolute path. `normalized-span` contains UTF-8 byte offsets only; module path is diagnostic and is not part of identity. `ordinal` is preorder ordinal among effectful calls in caller after parser normalization. Caller/callee readable names are diagnostic only, ABI symbols and hash bind identity.
 
-Duplicate call-site IDs are an internal compiler error during emission and invalid proof during verification.
+Any source-byte change may change module and call-site IDs. This conservative rule is intentional for artifact evidence. Duplicate call-site IDs are an internal compiler error during emission and invalid proof during verification.
+
+Diagnostic module paths must use `/`, be relative, contain no empty, `.` or `..` segment, no NUL/control character and no drive/UNC prefix. Verifier performs semantic segment validation after schema validation; regex alone is not the security boundary.
 
 ## Evidence model
 
@@ -150,10 +156,11 @@ Verifier:
 - performs no network access;
 - never executes artifact;
 - loads no plugins;
-- rejects duplicate keys, unknown fields and unsupported versions;
-- enforces all bounds;
-- canonicalizes and recomputes seal digest;
-- recomputes policy and exact artifact digests;
+- rejects duplicate keys, unknown fields, non-NFC strings and unsupported versions;
+- enforces all bounds and safe relative-path segments;
+- requires canonical received bytes;
+- canonicalizes payload without `seal_sha256` and recomputes seal digest;
+- recomputes effective-policy and exact artifact digests;
 - checks target triple and artifact kind supplied by deployment context;
 - uses constant-time digest comparison where practical;
 - emits deterministic text or JSON and controlled exit codes.
@@ -183,6 +190,7 @@ Numeric values preserve existing CLI classes; implementation must add stable dia
 - stale seal after one-byte mutation;
 - target mismatch and schema downgrade;
 - duplicate-key and Unicode normalization confusion;
+- unsafe diagnostic paths and symlink output replacement;
 - unstable or colliding call-site identity;
 - oversized/deep proof resource exhaustion;
 - hidden FFI assumptions;
@@ -201,8 +209,10 @@ Numeric values preserve existing CLI classes; implementation must add stable dia
 ## Required implementation tests
 
 - identical inputs produce byte-identical canonical proof;
-- Unicode identifiers normalize consistently;
+- Unicode identifiers normalize consistently and non-NFC evidence is rejected;
 - duplicate/unknown fields, unsupported version, truncation, excessive size/depth fail closed;
+- non-canonical JSON bytes fail even when logical object matches;
+- unsafe path segments, symlink destinations and target replacement races fail closed;
 - artifact, policy, target and certificate swaps fail;
 - one-byte artifact mutation fails;
 - call-site collision attempts fail;
