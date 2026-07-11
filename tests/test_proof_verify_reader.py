@@ -1,5 +1,5 @@
 import unittest
-from src.proof_seal import MAX_SEAL_BYTES
+from src.proof_seal import MAX_SEAL_BYTES,MAX_SAFE_INTEGER
 from src.proof_seal_verify import *
 from tests.proof_verify_fixtures import valid_bytes
 class ProofVerifyReaderTests(unittest.TestCase):
@@ -14,7 +14,13 @@ class ProofVerifyReaderTests(unittest.TestCase):
  def test_syntax(self):
   for data in (b"{",b"{} trailing",b'{"x":"\x01"}'):
    self.assertIn(inspect_bytes(data).diagnostic_code,{ProofSyntaxError.code,ProofDepthError.code,ProofVersionError.code})
- def test_nonstandard_and_oversized_numbers_are_controlled(self):
-  for data in (b'{"schema":NaN}',b'{"schema":1.5}',b'{"schema":123456789012345678901}'):
-   with self.subTest(data=data):self.assertEqual(ProofValueError.code,inspect_bytes(data).diagnostic_code)
+ def test_nonstandard_and_safe_integer_bounds_are_controlled(self):
+  accepted=(0,1,MAX_SAFE_INTEGER-1,MAX_SAFE_INTEGER)
+  for value in accepted:
+   data=(f'{{"schema":{value}}}').encode();self.assertEqual(ProofVersionError.code,inspect_bytes(data).diagnostic_code)
+  rejected=(MAX_SAFE_INTEGER+1,9_999_999_999_999_999,18_446_744_073_709_551_615,-1)
+  for value in rejected:
+   with self.subTest(value=value):self.assertEqual(ProofValueError.code,inspect_bytes((f'{{"schema":{value}}}').encode()).diagnostic_code)
+  for data in (b'{"schema":NaN}',b'{"schema":1.5}'):
+   self.assertEqual(ProofValueError.code,inspect_bytes(data).diagnostic_code)
 if __name__=="__main__":unittest.main()
