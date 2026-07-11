@@ -1,8 +1,10 @@
-import json,subprocess,sys,tempfile,unittest
+import json,os,subprocess,sys,tempfile,unittest
 class ТестыCheckedArithmeticCli(unittest.TestCase):
  def source(self,text):
   f=tempfile.NamedTemporaryFile("w",suffix=".яд",delete=False,encoding="utf-8");f.write(text);f.close();return f.name
- def cli(self,*args):return subprocess.run([sys.executable,"-m","src.guard_cli",*args],capture_output=True,text=True,timeout=30)
+ def cli(self,*args):
+  env=dict(os.environ);env["PYTHONUTF8"]="1"
+  return subprocess.run([sys.executable,"-m","src.guard_cli",*args],capture_output=True,text=True,encoding="utf-8",errors="strict",timeout=30,env=env)
  def test_compile_flag_changes_ir(self):
   path=self.source("функ calc(x) { вернуть x + 1 } функ старт() { вернуть calc(1) }")
   default=self.cli("compile",path,"--ir");checked=self.cli("compile",path,"--ir","--checked-arithmetic")
