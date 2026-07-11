@@ -7,10 +7,11 @@ class ОшибкаКодогена(Exception):pass
 def тип(т):return {"i64":I64,"bool":BOOL,"string":PTR}[т]
 def символ(префикс,имя):return f"yadro.{префикс}.{hashlib.sha256(имя.encode()).hexdigest()[:16]}"
 class Кодоген:
- def __init__(self):self.модуль=ir.Module(name="ядро");self.модуль.triple=llvm.get_default_triple();self.ф={};self.ext={};self.скоуп={};self.b=None;self.n=0;self.printf=ir.Function(self.модуль,ir.FunctionType(I32,[PTR],var_arg=True),name="printf")
+ def __init__(self,symbol_mangler=None):
+  self.symbol_mangler=символ if symbol_mangler is None else symbol_mangler;self.модуль=ir.Module(name="ядро");self.модуль.triple=llvm.get_default_triple();self.ф={};self.ext={};self.скоуп={};self.b=None;self.n=0;self.printf=ir.Function(self.модуль,ir.FunctionType(I32,[PTR],var_arg=True),name="printf")
  def сгенерировать(self,прог):
   self.fi=self._глоб("%lld\n");self.fs=self._глоб("%s\n");self.fr=self._глоб("Результат старт(): %lld\n")
-  for ф in прог.функции:self.ф[ф.имя]=ir.Function(self.модуль,ir.FunctionType(тип(ф.выведенный_тип_возврата),[тип(x) for x in ф.выведенные_типы_параметров]),name=символ("fn",ф.имя))
+  for ф in прог.функции:self.ф[ф.имя]=ir.Function(self.модуль,ir.FunctionType(тип(ф.выведенный_тип_возврата),[тип(x) for x in ф.выведенные_типы_параметров]),name=self.symbol_mangler("fn",ф.имя))
   for ф in прог.функции:self._функция(ф)
   self._entry();т=str(self.модуль)
   try:м=llvm.parse_assembly(т);м.verify()
@@ -68,7 +69,7 @@ class Кодоген:
    if у.имя in self.ф:return self.b.call(self.ф[у.имя],а)
    sig=tuple(x.type for x in а);prev=self.ext.get(у.имя)
    if prev and prev[0]!=sig:raise ОшибкаКодогена(f"extern ABI mismatch '{у.имя}'")
-   if not prev:self.ext[у.имя]=(sig,ir.Function(self.модуль,ir.FunctionType(I64,list(sig)),name=символ("abi.v1",у.имя)))
+   if not prev:self.ext[у.имя]=(sig,ir.Function(self.модуль,ir.FunctionType(I64,list(sig)),name=self.symbol_mangler("abi.v1",у.имя)))
    return self.b.call(self.ext[у.имя][1],а)
   raise ОшибкаКодогена(f"неподдерживаемый узел {type(у).__name__}")
  def _глоб(self,т):
