@@ -47,7 +47,7 @@ def классифицировать(e):
  if isinstance(e,(OSError,UnicodeError,json.JSONDecodeError,ОшибкаПолитики,compiler.ОшибкаТочкиВхода,compiler.ОшибкаСемантики,ОшибкаПарсера,ОшибкаЛексера)):return ОШИБКА_ИСХОДНИКА
  return ВНУТРЕННЯЯ_ОШИБКА
 def parser():
- root=argparse.ArgumentParser(prog="yadro-guard");root.add_argument("--version",action="store_true");sub=root.add_subparsers(dest="command");common=argparse.ArgumentParser(add_help=False);common.add_argument("source");common.add_argument("--policy");common.add_argument("--format",choices=("text","json","sarif"),default="text");sub.add_parser("scan",parents=[common]);cp=sub.add_parser("compile",parents=[common]);cp.add_argument("-o","--output",default="ядро.o");cp.add_argument("--ir",action="store_true");sub.add_parser("audit",parents=[common]);pp=sub.add_parser("policy");ps=pp.add_subparsers(dest="policy_command",required=True);c=ps.add_parser("check");c.add_argument("path");sub.add_parser("version");return root
+ root=argparse.ArgumentParser(prog="yadro-guard");root.add_argument("--version",action="store_true");sub=root.add_subparsers(dest="command");common=argparse.ArgumentParser(add_help=False);common.add_argument("source");common.add_argument("--policy");common.add_argument("--format",choices=("text","json","sarif"),default="text");sub.add_parser("scan",parents=[common]);cp=sub.add_parser("compile",parents=[common]);cp.add_argument("-o","--output",default="ядро.o");cp.add_argument("--ir",action="store_true");cp.add_argument("--checked-arithmetic",action="store_true");sub.add_parser("audit",parents=[common]);pp=sub.add_parser("policy");ps=pp.add_subparsers(dest="policy_command",required=True);c=ps.add_parser("check");c.add_argument("path");sub.add_parser("version");return root
 def run(argv=None,stdout=sys.stdout,stderr=sys.stderr):
  args=parser().parse_args(argv)
  if args.version or args.command=="version":print(VERSION,file=stdout);return УСПЕХ
@@ -61,7 +61,7 @@ def run(argv=None,stdout=sys.stdout,stderr=sys.stderr):
   source=Path(args.source).read_text(encoding="utf-8")
   if args.command=="scan":compiler.компилировать(source);emit({"status":"ok","path":str(Path(args.source).resolve()),"version":VERSION},args.format,stdout)
   elif args.command=="compile":
-   ir=compiler.компилировать(source,выводить_ir=args.ir)
+   profile="checked" if args.checked_arithmetic else "default";ir=compiler.компилировать(source,выводить_ir=args.ir,арифметика=profile)
    if not args.ir:compiler.собрать_нативно(ir,args.output)
   else:
    ast=Парсер(Лексер(source).токены()).разобрать();compiler._проверить_уникальность_функций(ast);compiler._проверить_точку_входа(ast);compiler._проверить_вызовы(ast);compiler._проверить_выражения(ast);an=ЭтическийАнализатор();an.проверить(ast);emit({"status":"ok","findings":[vars(x) for x in an.аудит_трейл]},args.format,stdout) if args.format!="text" else print(an.сгенерировать_аудит_отчет(),file=stdout)

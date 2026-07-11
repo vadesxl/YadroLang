@@ -16,5 +16,5 @@ def measure(fn,rounds):
 def analyze():ЭтическийАнализатор().проверить(Парсер(Лексер(ЭТИКА).токены()).разобрать())
 def mcp():
  путь=Path(tempfile.gettempdir())/'yadro-benchmark-mcp-ru.json';путь.write_text(json.dumps(MCP,ensure_ascii=False));run_mcp(['scan',str(путь)],io.StringIO(),io.StringIO())
-результат={"schema":"yadro-benchmark-1.0","python":platform.python_version(),"platform":platform.platform(),"compile":measure(lambda:компилировать(ИСТОЧНИК),40),"ethical_analysis":measure(analyze,80),"mcp_scan":measure(mcp,120)}
+результат={"schema":"yadro-benchmark-1.0","python":platform.python_version(),"platform":platform.platform(),"compile":measure(lambda:компилировать(ИСТОЧНИК),40),"compile_checked":measure(lambda:компилировать(ИСТОЧНИК,арифметика="checked"),40),"ethical_analysis":measure(analyze,80),"mcp_scan":measure(mcp,120)}
 print(json.dumps(результат,ensure_ascii=False,indent=2,sort_keys=True))
