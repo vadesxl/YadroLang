@@ -11,8 +11,7 @@ class ProofVerifyPreflightTests(unittest.TestCase):
    self.assertEqual(ProofVersionError.code,inspect_bytes(encoded(value)).diagnostic_code)
  def test_missing_or_wrong_versions(self):
   value=parsed();del value["subject"]["policy_schema_version"];self.assertEqual(ProofVersionError.code,inspect_bytes(encoded(value)).diagnostic_code)
-  value=parsed();value["schema"]=1;self.assertEqual(ProofValueError.code,inspect_bytes(encoded(value)).diagnostic_code)
+  value=parsed();value["schema"]=1;self.assertEqual(ProofVersionError.code,inspect_bytes(encoded(value)).diagnostic_code)
  def test_duplicate_keys_nested(self):
-  data=valid_bytes().replace(b'"mode":"unsigned"',b'"mode":"unsigned","mode":"unsigned"')
-  self.assertEqual(ProofDuplicateKeyError.code,inspect_bytes(data).diagnostic_code)
+  data=valid_bytes().replace(b'"mode":"unsigned"',b'"mode":"unsigned","mode":"unsigned"');self.assertEqual(ProofDuplicateKeyError.code,inspect_bytes(data).diagnostic_code)
 if __name__=="__main__":unittest.main()
