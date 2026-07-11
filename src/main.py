@@ -7,6 +7,7 @@ from src.синтаксис import Парсер,ОшибкаПарсера,Вы�
 from src.этика import ЭтическийАнализатор,ЭтическаяОшибка,СТОКИ,ИСТОЧНИКИ,САНИТАЙЗЕРЫ
 from src.типы import ПроверкаТипов,ОшибкаТипов
 from src.кодоген import Кодоген,ОшибкаКодогена
+ТАЙМАУТ_TOOL=30
 class ОшибкаТочкиВхода(Exception):pass
 class ОшибкаСемантики(Exception):pass
 def _проверить_точку_входа(ast):
@@ -64,13 +65,16 @@ def компилировать(исходник,выводить_ir=False):
  ast=Парсер(Лексер(исходник).токены()).разобрать();_проверить_уникальность_функций(ast);_проверить_точку_входа(ast);_проверить_вызовы(ast);_проверить_выражения(ast);ПроверкаТипов(set(ИСТОЧНИКИ)|set(СТОКИ)|set(САНИТАЙЗЕРЫ)|{"печать"}).проверить(ast);ЭтическийАнализатор().проверить(ast);ir=Кодоген().сгенерировать(ast)
  if выводить_ir:print(ir)
  return ir
+def _запустить_tool(команда,этап):
+ try:return subprocess.run(команда,capture_output=True,text=True,timeout=ТАЙМАУТ_TOOL)
+ except subprocess.TimeoutExpired as ошибка:raise RuntimeError(f"{этап} завис более {ТАЙМАУТ_TOOL}s: {os.path.basename(str(ошибка.cmd[0]))}") from ошибка
 def _создать_windows_coff(модуль,выход,triple):
  clang=shutil.which("clang")
- if not clang:raise RuntimeError("Для нативного Windows object нужен clang из поддерживаемого LLVM toolchain")
+ if not clang:raise RuntimeError("Для Windows native object нужен поддерживаемый clang LLVM toolchain в PATH")
  with tempfile.TemporaryDirectory() as папка:
   путь_ir=os.path.join(папка,"yadro.ll")
   with open(путь_ir,"w",encoding="utf-8",newline="\n") as файл_ir:файл_ir.write(str(модуль))
-  результат=subprocess.run([clang,"-target",triple,"-x","ir","-c",путь_ir,"-o",выход],capture_output=True,text=True)
+  результат=_запустить_tool([clang,"-target",triple,"-x","ir","-c",путь_ir,"-o",выход],"clang COFF emission")
   if результат.returncode:raise RuntimeError(f"clang COFF emission завершился ошибкой: {результат.stderr.strip()}")
  with open(выход,"rb") as файл:
   if файл.read(2)!=b"\x64\x86":raise RuntimeError("clang не создал AMD64 COFF object")
