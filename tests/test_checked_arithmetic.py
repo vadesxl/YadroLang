@@ -1,7 +1,7 @@
 import unittest
 from llvmlite import binding as llvm
 from src.main import компилировать,ОшибкаСемантики,ОшибкаCheckedАрифметики
-from src.кодоген import Кодоген
+from src.кодоген import Кодоген,ОшибкаКодогена
 class ТестыCheckedArithmetic(unittest.TestCase):
  def verified(self,source,profile="checked"):
   text=компилировать(source,арифметика=profile);module=llvm.parse_assembly(text);module.verify();return text
@@ -16,11 +16,14 @@ class ТестыCheckedArithmetic(unittest.TestCase):
   text=self.verified("функ calc(x, y) { вернуть x / y } функ старт() { вернуть calc(8, 2) }")
   self.assertIn("div.zero",text);self.assertIn("div.minimum",text);self.assertIn("div.minus_one",text);self.assertLess(text.index("div.invalid"),text.index("sdiv i64"))
  def test_profile_state_is_instance_local(self):
-  source="функ calc(x) { вернуть x + 1 } функ старт() { вернуть calc(1) }";first=компилировать(source);checked=компилировать(source,арифметика="checked");last=компилировать(source)
+  source="функ calc(x) { вернуть x + 1 } функция старт() { вернуть calc(1) }".replace("функция","функ");first=компилировать(source);checked=компилировать(source,арифметика="checked");last=компилировать(source)
   self.assertNotIn("with.overflow",first);self.assertIn("sadd.with.overflow",checked);self.assertNotIn("with.overflow",last)
   self.assertEqual("default",Кодоген().arithmetic_profile);self.assertEqual("checked",Кодоген(arithmetic_profile="checked").arithmetic_profile)
  def test_invalid_profile_fails_closed(self):
-  with self.assertRaisesRegex(ОшибкаСемантики,"Неизвестный arithmetic profile"):компилировать("функ старт() { вернуть 0 }",арифметика="fast-magic")
+  source="функ старт() { вернуть 0 }"
+  for profile in ("fast-magic",None,True,[]):
+   with self.subTest(profile=repr(profile)),self.assertRaisesRegex(ОшибкаСемантики,"Неизвестный arithmetic profile"):компилировать(source,арифметика=profile)
+   with self.subTest(direct=repr(profile)),self.assertRaisesRegex(ОшибкаКодогена,"неизвестный arithmetic profile"):Кодоген(arithmetic_profile=profile)
  def test_checked_constant_overflow_rejected_only_in_checked(self):
   cases=("9223372036854775807 + 1","((0 - 9223372036854775807) - 1) - 1","9223372036854775807 * 2")
   for expression in cases:
