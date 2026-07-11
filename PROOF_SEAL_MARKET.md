@@ -2,20 +2,22 @@
 
 Дата исследования: 2026-07-11. Это engineering comparison публично описанных возможностей, не сертификация vendors и не патентный поиск.
 
-| Категория / пример | Основной control point | MCP | IFC / taint | Exact native artifact binding | Offline source-free verification | Explicit FFI assumptions |
+| Категория / пример | Основной control point | MCP | IFC / taint | Exact native artifact binding | Offline verification | Explicit FFI assumptions |
 |---|---|---:|---:|---:|---:|---:|
 | Cisco MCP Scanner | server/config scan | да | частично | нет | нет | нет |
 | MCP Firewall / MCP Visor | runtime gateway | да | policy dependent | нет | нет | нет |
 | Lakera Agent Security | discovery/runtime protection | да | runtime context | нет | нет | нет |
 | AgentPerms | observed behavior and runtime authorization | да | нет | нет | нет | нет |
 | SAST / taint platforms | source/PR scan | varies | да | обычно нет | reports, не artifact proof | обычно нет |
-| Sigstore / DSSE / SLSA attestations | supply-chain identity/provenance | agnostic | нет | да | да | нет semantic AI flow proof |
-| PCAA / proof-derived authorization research | pre-action/runtime certificate | agnostic | contract dependent | иногда execution binding | да | model dependent |
-| Yadro Proof Seal design | compile-time policy evidence | Yadro schema | да | LLVM + exact object | да | да |
+| Sigstore / DSSE / SLSA attestations | supply-chain identity/provenance | agnostic | нет | да | authenticated metadata | нет semantic AI flow proof |
+| PCAA / proof-derived authorization research | pre-action/runtime certificate | agnostic | contract dependent | иногда execution binding | model dependent | model dependent |
+| Yadro Proof Seal design | compile-time policy evidence | Yadro schema | да | LLVM + exact object | unsigned structural v1, authenticated future | да |
 
 ## Вывод
 
-Исследованная выборка хорошо покрывает scanning, runtime interception, software provenance и research action certificates по отдельности. Прямой продуктовый аналог, совмещающий compile-time capability/taint evidence, verified LLVM binding, exact native object binding, offline verification без source и explicit FFI assumptions, не найден.
+Исследованная выборка хорошо покрывает scanning, runtime interception, software provenance и research action certificates по отдельности. Прямой продуктовый аналог, совмещающий compile-time capability/taint evidence, verified LLVM binding, exact native object binding, offline source-free inspection and explicit FFI assumptions, не найден.
+
+Unsigned Proof Seal v1 не обеспечивает authenticity и не защищает от coordinated replacement всех inputs. Он требует trusted delivery channel или future standard authenticated envelope. Это принципиальное отличие structural binding от signed attestation.
 
 ## Позиционирование
 
@@ -24,14 +26,16 @@
 - «доказывает, что AI добрый»;
 - «формально доказана вся программа»;
 - «заменяет runtime security»;
-- «единственное решение в мире».
+- «единственное решение в мире»;
+- «unsigned proof защищает от активного подменяющего атакующего».
 
 Говорить:
 
 - compile-time evidence для конкретного versioned policy contract;
-- proof bound to exact emitted native artifact;
+- proof structurally bound to exact emitted native artifact;
 - auditable capabilities, data flows and external assumptions;
-- offline deployment verification without executing artifact;
+- offline inspection without executing artifact;
+- authenticity requires trusted channel or future standard envelope;
 - no policy evaluation in application hot path.
 
 ## Публичные ориентиры
