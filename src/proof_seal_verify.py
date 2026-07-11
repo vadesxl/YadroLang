@@ -2,7 +2,7 @@
 """Phase 2: bounded, strict, offline verification of Yadro Proof Seal bytes."""
 from dataclasses import dataclass
 import hmac,json,unicodedata
-from src.proof_seal import (MAX_SEAL_BYTES,MAX_CALL_SITES,MAX_ENTRY_POINTS,MAX_ASSUMPTIONS,MAX_SEMANTIC_SET,MAX_IDENTIFIER_BYTES,MAX_PATH_BYTES,MAX_SAFE_INTEGER,SCHEMA,POLICY_VERSION,LLVM_NORMALIZATION_VERSION,ProofSealError,TrustState,CompilerIdentity,SourceSpan,CallSiteEvidence,FixpointEvidence,AnalysisEvidence,SubjectBinding,ProofSealCore,ProofSeal,make_assumption,canonical_bytes,seal)
+from src.proof_seal import (MAX_SEAL_BYTES,MAX_CALL_SITES,MAX_ENTRY_POINTS,MAX_ASSUMPTIONS,MAX_SEMANTIC_SET,MAX_IDENTIFIER_BYTES,MAX_PATH_BYTES,MAX_SAFE_INTEGER,SCHEMA,POLICY_VERSION,LLVM_NORMALIZATION_VERSION,ProofSealError,TrustState,CompilerIdentity,SourceSpan,FixpointEvidence,AnalysisEvidence,SubjectBinding,ProofSealCore,ProofSeal,make_assumption,make_call_site,call_site_id,canonical_bytes,seal)
 MAX_DEPTH=16
 class ProofVerificationError(ValueError):
  code="ЯДРО-П0000"
@@ -64,7 +64,6 @@ def _json_integer(text):
  if not 0<=value<=MAX_SAFE_INTEGER:raise ProofValueError("JSON integer exceeds safe range")
  return value
 def _no_float(_):raise ProofValueError("floating-point JSON values are forbidden")
-
 def _parse(data):
  text=_decode(data);_scan_depth(text)
  try:return json.loads(text,object_pairs_hook=_pairs,parse_int=_json_integer,parse_float=_no_float,parse_constant=_no_float)
@@ -81,12 +80,10 @@ def _nfc(value,name,max_bytes=MAX_IDENTIFIER_BYTES,empty=False):
  if len(encoded)>max_bytes:raise ProofValueError(f"{name} exceeds byte limit")
  if "\x00" in value or any(ord(ch)<32 or ord(ch)==127 for ch in value):raise ProofValueError(f"{name} contains forbidden character")
  return value
-
 def _obj(value,required,name):
  if not isinstance(value,dict):raise ProofStructureError(f"{name} must be an object")
  if set(value)!=set(required):raise ProofStructureError(f"{name} fields do not match schema")
  return value
-
 def _integer(value,name,minimum=0):
  if not isinstance(value,int) or isinstance(value,bool) or not minimum<=value<=MAX_SAFE_INTEGER:raise ProofValueError(f"{name} must be an integer in {minimum}..{MAX_SAFE_INTEGER}")
  return value
@@ -97,7 +94,6 @@ def _hash(value,name):
  value=_nfc(value,name,64)
  if len(value)!=64 or any(ch not in "0123456789abcdef" for ch in value):raise ProofValueError(f"{name} must be lowercase SHA-256")
  return value
-
 def _ordered_strings(value,name,max_items=MAX_SEMANTIC_SET,hashes=False):
  if not isinstance(value,list):raise ProofStructureError(f"{name} must be an array")
  if len(value)>max_items:raise ProofValueError(f"{name} exceeds item limit")
@@ -128,8 +124,7 @@ def _subject(value):
  try:return SubjectBinding(*(value[name] for name in names))
  except ProofSealError as error:raise ProofValueError("invalid subject binding") from error
 def _span(value):
- value=_obj(value,("module_path","start_byte","end_byte","ordinal"),"span")
- _nfc(value["module_path"],"module_path",MAX_PATH_BYTES);_integer(value["start_byte"],"start_byte");_integer(value["end_byte"],"end_byte");_integer(value["ordinal"],"ordinal")
+ value=_obj(value,("module_path","start_byte","end_byte","ordinal"),"span");_nfc(value["module_path"],"module_path",MAX_PATH_BYTES);_integer(value["start_byte"],"start_byte");_integer(value["end_byte"],"end_byte");_integer(value["ordinal"],"ordinal")
  try:return SourceSpan(value["module_path"],value["start_byte"],value["end_byte"],value["ordinal"])
  except ProofSealError as error:raise ProofValueError("invalid source span") from error
 
@@ -144,35 +139,37 @@ def _assumption(value):
  if not hmac.compare_digest(value["id"],computed.id):raise ProofReferenceError("assumption content ID mismatch")
  return computed
 
-def _call(value):
- names=("id","caller","callee","span","required_capabilities","declared_capabilities","incoming_labels","outgoing_labels","sanitizers","declassified_labels","policy_rules","implicit_labels","assumption_ids","reachable_entries","status");value=_obj(value,names,"call site")
- call_id=_hash(value["id"],"call-site id");caller=_nfc(value["caller"],"caller");callee=_nfc(value["callee"],"callee");span=_span(value["span"])
- sets={name:_ordered_strings(value[name],name,MAX_ENTRY_POINTS if name=="reachable_entries" else MAX_SEMANTIC_SET,hashes=name=="assumption_ids") for name in names[4:14]}
+def _call(value,frontend):
+ identity=("id","module_id","semantic_kind","caller","callee","span");sets=("required_capabilities","declared_capabilities","incoming_labels","outgoing_labels","sanitizers","declassified_labels","policy_rules","implicit_labels","assumption_ids","reachable_entries");names=identity+sets+("status",);value=_obj(value,names,"call site")
+ call_id=_hash(value["id"],"call-site id");module_digest=_hash(value["module_id"],"module id");semantic_kind=_nfc(value["semantic_kind"],"semantic kind");caller=_nfc(value["caller"],"caller");callee=_nfc(value["callee"],"callee");span=_span(value["span"])
+ if semantic_kind!="call":raise ProofValueError("unsupported semantic kind")
+ checked={name:_ordered_strings(value[name],name,MAX_ENTRY_POINTS if name=="reachable_entries" else MAX_SEMANTIC_SET,hashes=name=="assumption_ids") for name in sets}
  if value["status"]!="allowed":raise ProofValueError("call-site status must be allowed")
- try:return CallSiteEvidence(call_id,caller,callee,span,sets["required_capabilities"],sets["declared_capabilities"],sets["incoming_labels"],sets["outgoing_labels"],sets["sanitizers"],sets["declassified_labels"],sets["policy_rules"],sets["implicit_labels"],sets["assumption_ids"],sets["reachable_entries"],"allowed")
+ try:expected=call_site_id(frontend,module_digest,caller,callee,semantic_kind,span.start_byte,span.end_byte,span.ordinal)
+ except ProofSealError as error:raise ProofValueError("invalid call-site identity inputs") from error
+ if not hmac.compare_digest(call_id,expected):raise ProofReferenceError("call-site content ID mismatch")
+ try:return make_call_site(frontend,module_digest,semantic_kind,caller,callee,span,**checked)
  except ProofSealError as error:raise ProofValueError("invalid call-site evidence") from error
 
 def _fixpoint(value):
  value=_obj(value,("algorithm","lattice_labels","updates","bound"),"fixpoint");labels=_ordered_strings(value["lattice_labels"],"lattice_labels");updates=_integer(value["updates"],"updates");bound=_integer(value["bound"],"bound",1)
  if value["algorithm"]!="bounded-monotone-1.0" or updates>bound:raise ProofValueError("invalid fixpoint evidence")
  return FixpointEvidence(value["algorithm"],labels,updates,bound)
-
-def _analysis(value):
+def _analysis(value,frontend):
  value=_obj(value,("entry_points","call_sites","assumptions","fixpoint"),"analysis");entries=_ordered_strings(value["entry_points"],"entry_points",MAX_ENTRY_POINTS)
  if not isinstance(value["assumptions"],list) or len(value["assumptions"])>MAX_ASSUMPTIONS:raise ProofValueError("assumptions exceed bound")
  assumptions=tuple(_assumption(item) for item in value["assumptions"])
  if tuple(sorted(assumptions,key=lambda x:x.id))!=assumptions or len({x.id for x in assumptions})!=len(assumptions):raise ProofOrderingError("assumptions must be unique and sorted")
  if not isinstance(value["call_sites"],list) or len(value["call_sites"])>MAX_CALL_SITES:raise ProofValueError("call sites exceed bound")
- calls=tuple(_call(item) for item in value["call_sites"])
+ calls=tuple(_call(item,frontend) for item in value["call_sites"])
  if tuple(sorted(calls,key=lambda x:x.id))!=calls or len({x.id for x in calls})!=len(calls):raise ProofOrderingError("call sites must be unique and sorted")
  known={item.id for item in assumptions}
  if any(ref not in known for call in calls for ref in call.assumption_ids):raise ProofReferenceError("call site references unknown assumption")
  try:return AnalysisEvidence(entries,calls,assumptions,_fixpoint(value["fixpoint"]))
  except ProofSealError as error:raise ProofValueError("invalid analysis evidence") from error
-
 def _reconstruct(root):
- root=_obj(root,("schema","trust","compiler","subject","analysis","seal_sha256"),"proof");_preflight(root);digest=_hash(root["seal_sha256"],"seal_sha256")
- return ProofSealCore(_compiler(root["compiler"]),_subject(root["subject"]),_analysis(root["analysis"]),_trust(root["trust"]),root["schema"]),digest
+ root=_obj(root,("schema","trust","compiler","subject","analysis","seal_sha256"),"proof");_preflight(root);digest=_hash(root["seal_sha256"],"seal_sha256");compiler=_compiler(root["compiler"])
+ return ProofSealCore(compiler,_subject(root["subject"]),_analysis(root["analysis"],compiler.frontend),_trust(root["trust"]),root["schema"]),digest
 
 def _pipeline(data,verify):
  root=_parse(data);schema=_preflight(root);core,digest=_reconstruct(root)
