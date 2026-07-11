@@ -12,4 +12,5 @@ def rich_core(order=False):
  call=make_call_site(cid,"caller","callee",span,required_capabilities=("ДоступСети",),incoming_labels=values,assumption_ids=(assumption.id,),reachable_entries=("entry",))
  compiler=CompilerIdentity("yadro-guard","2.1.0","ru","1.0")
  subject=SubjectBinding(POLICY_VERSION,LLVM_NORMALIZATION_VERSION,ZERO,ONE,ZERO,ONE,"x86_64-pc-windows-msvc","coff-object")
- return ProofSealCore(compiler,subject,make_analysis(("entry",),(call,),(assumption,),FixpointEvidence("bounded-monotone-1.0",values,1,5)))
+ lattice=canonical_strings(values,"lattice_labels")
+ return ProofSealCore(compiler,subject,make_analysis(("entry",),(call,),(assumption,),FixpointEvidence("bounded-monotone-1.0",lattice,1,5)))
