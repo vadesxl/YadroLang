@@ -57,8 +57,11 @@ Canonical bytes:
 - standard lowercase JSON escapes for quote/backslash/controls, `/` unescaped;
 - exactly one trailing LF;
 - decimal integers without leading/negative zero; floats forbidden;
+- every integer is in `0..9007199254740991` (`2^53-1`, JavaScript `Number.MAX_SAFE_INTEGER`);
 - duplicate/unknown fields rejected;
 - no timestamps, hostnames, usernames or absolute paths.
+
+The safe-integer ceiling is normative for public cross-language JSON interoperability. It applies to source byte offsets, ordinals, fixpoint updates and bounds. Values above it, negative integers, booleans in integer positions, floats and exponent notation are rejected without rounding.
 
 Array order:
 
@@ -79,7 +82,7 @@ Received full document bytes must also equal canonical encoding. Self-digest is 
 
 ## Bounds
 
-V1: 1 MiB seal, depth 16, 10,000 call sites, 256 entries, 2,000 assumptions, 32 values per semantic set, 256 UTF-8 bytes per identifier and 512 per diagnostic module path. Bounds are enforced before proportional allocation.
+V1: 1 MiB seal, depth 16, 10,000 call sites, 256 entries, 2,000 assumptions, 32 values per semantic set, 256 UTF-8 bytes per identifier, 512 per diagnostic module path and `MAX_SAFE_INTEGER = 9007199254740991` for every integer. Bounds are enforced before proportional allocation.
 
 ## Subject binding and versions
 
@@ -177,6 +180,8 @@ Unsigned coordinated replacement, malicious compiler/build host, compromised ext
 - machine-readable unsigned trust result;
 - bounded preflight selects versions before strict schema and rejects unsupported tuple;
 - NFC, duplicate/unknown fields, truncation, size/depth and non-canonical bytes fail;
+- safe-integer boundaries accept `0`, `1`, `9007199254740990`, `9007199254740991` and reject larger, negative, boolean and floating values across schema/model/verifier;
+- max integer serializes as exact decimal JSON without exponent notation or rounding;
 - span/order/ID invariants and domain-separated golden vectors;
 - paths/symlinks fail under trusted-parent contract;
 - artifact/policy/target swaps and mutation fail against fixed trust anchor;
