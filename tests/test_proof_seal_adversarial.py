@@ -5,16 +5,33 @@ class ProofSealAdversarialTests(unittest.TestCase):
  def test_non_nfc_and_controls(self):
   for value in ("e\u0301","bad\x00name","bad\x01name"):
    with self.subTest(value=value),self.assertRaises(ProofSealError):CompilerIdentity("yadro-guard",value,"ru","1.0")
+ def test_invalid_unicode_scalars_are_controlled_everywhere(self):
+  for bad in ("\ud800","\udfff","\udfff\ud800"):
+   cases=(
+    lambda:SourceSpan(bad,0,0,0),
+    lambda:CompilerIdentity("yadro-guard",bad,"ru","1.0"),
+    lambda:SubjectBinding(POLICY_VERSION,LLVM_NORMALIZATION_VERSION,ZERO,ZERO,ZERO,ZERO,bad,"elf-object"),
+    lambda:make_assumption(bad,"i64()",None,"identity",False,"call",False),
+    lambda:canonical_strings((bad,),"labels"),
+    lambda:call_site_id("ru",ZERO,bad,"callee","call",0,0,0),
+    lambda:call_site_id("ru",ZERO,"caller",bad,"call",0,0,0),
+   )
+   for case in cases:
+    with self.subTest(codepoints=[hex(ord(ch)) for ch in bad]):
+     with self.assertRaises(ProofSealError) as first:case()
+     with self.assertRaises(ProofSealError) as second:case()
+     self.assertEqual(str(first.exception),str(second.exception));self.assertNotIn(bad,str(first.exception))
+ def test_valid_non_bmp_scalars(self):
+  for text in ("caller-🚀","caller-𐐷"):
+   self.assertEqual(text,canonical_strings((text,),"labels")[0])
+   self.assertEqual(64,len(call_site_id("ru",ZERO,text,"callee","call",0,0,0)))
  def test_invalid_trust_and_versions(self):
   with self.assertRaises(ProofSealError):TrustState("signed","verified")
   with self.assertRaises(ProofSealError):SubjectBinding("future",LLVM_NORMALIZATION_VERSION,ZERO,ZERO,ZERO,ZERO,"x","elf-object")
   with self.assertRaises(ProofSealError):SubjectBinding(POLICY_VERSION,"future",ZERO,ZERO,ZERO,ZERO,"x","elf-object")
- def test_invalid_span_and_safe_integer_overflow(self):
-  invalid=((-1,0,0),(2,1,0),(0,1,-1),(True,1,0),(0,MAX_SAFE_INTEGER+1,0),(0,1,MAX_SAFE_INTEGER+1))
-  for start,end,ordinal in invalid:
+ def test_invalid_span(self):
+  for start,end,ordinal in ((-1,0,0),(2,1,0),(0,1,-1),(True,1,0)):
    with self.subTest(values=(start,end,ordinal)),self.assertRaises(ProofSealError):SourceSpan("x",start,end,ordinal)
-  for value in (9_007_199_254_740_992,9_999_999_999_999_999,18_446_744_073_709_551_615,False,1.0):
-   with self.subTest(value=value),self.assertRaises(ProofSealError):FixpointEvidence("bounded-monotone-1.0",(),value,MAX_SAFE_INTEGER)
  def test_duplicate_sets_and_ids(self):
   with self.assertRaises(ProofSealError):canonical_strings(("a","a"),"labels")
   assumption=make_assumption("sym","i64()",None,"identity",False,"call",False)

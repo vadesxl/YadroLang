@@ -8,9 +8,12 @@ SCHEMA="yadro-proof-seal-1.0";POLICY_VERSION="yadro-policy-1.0";LLVM_NORMALIZATI
 class ProofSealError(ValueError):pass
 def _text(value,name,max_bytes=MAX_IDENTIFIER_BYTES,empty=False):
  if not isinstance(value,str):raise ProofSealError(f"{name} must be a string")
- if unicodedata.normalize("NFC",value)!=value:raise ProofSealError(f"{name} must be NFC")
  if not empty and not value:raise ProofSealError(f"{name} must not be empty")
- if len(value.encode("utf-8"))>max_bytes:raise ProofSealError(f"{name} exceeds {max_bytes} UTF-8 bytes")
+ if any(0xD800<=ord(ch)<=0xDFFF for ch in value):raise ProofSealError(f"{name} contains invalid Unicode scalar value")
+ if unicodedata.normalize("NFC",value)!=value:raise ProofSealError(f"{name} must be NFC")
+ try:encoded=value.encode("utf-8")
+ except UnicodeEncodeError as error:raise ProofSealError(f"{name} contains invalid Unicode scalar value") from error
+ if len(encoded)>max_bytes:raise ProofSealError(f"{name} exceeds {max_bytes} UTF-8 bytes")
  if "\x00" in value:raise ProofSealError(f"{name} contains NUL")
  if any(ord(ch)<32 or ord(ch)==127 for ch in value):raise ProofSealError(f"{name} contains control characters")
  return value
@@ -43,7 +46,8 @@ def safe_path(value):
 def _canonical_mapping(mapping):
  try:text=json.dumps(mapping,ensure_ascii=False,sort_keys=True,separators=(",",":"),allow_nan=False)
  except (TypeError,ValueError) as error:raise ProofSealError(f"cannot canonicalize: {error}") from error
- data=(text+"\n").encode("utf-8")
+ try:data=(text+"\n").encode("utf-8")
+ except UnicodeEncodeError as error:raise ProofSealError("canonical value contains invalid Unicode scalar value") from error
  if len(data)>MAX_SEAL_BYTES:raise ProofSealError("proof exceeds maximum size")
  return data
 def _assumption_payload(symbol,abi_signature,capability,taint_transform,trusted_sanitizer,lifetime,no_retain,implementation_sha256):return {"abi_signature":abi_signature,"capability":capability,"implementation_sha256":implementation_sha256,"lifetime":lifetime,"no_retain":no_retain,"symbol":symbol,"taint_transform":taint_transform,"trusted_sanitizer":trusted_sanitizer}
