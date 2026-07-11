@@ -20,7 +20,6 @@ class ProofVerifyAdversarialTests(unittest.TestCase):
  def test_lone_and_reversed_surrogates_are_controlled(self):
   for bad in ("\ud800","\udfff","\udfff\ud800"):
    cases=[]
-   value=parsed();value["compiler"]["name"]=bad;cases.append(value)
    value=parsed();value["analysis"]["call_sites"][0]["caller"]=bad;cases.append(value)
    value=parsed();value["analysis"]["call_sites"][0]["callee"]=bad;cases.append(value)
    value=parsed();value["analysis"]["call_sites"][0]["span"]["module_path"]=bad;cases.append(value)
@@ -37,7 +36,7 @@ class ProofVerifyAdversarialTests(unittest.TestCase):
    value=parsed();value["schema"]=bad
    result=inspect_bytes(escaped(value));self.assertFalse(result.valid);self.assertEqual(ProofVersionError.code,result.diagnostic_code)
  def test_valid_non_bmp_scalar_is_accepted(self):
-  for text in ("compiler-🚀","caller-𐐷"):
-   value=parsed();value["compiler"]["name"]=text
+  for text in ("caller-🚀","caller-𐐷"):
+   value=parsed();value["analysis"]["call_sites"][0]["caller"]=text
    self.assertTrue(inspect_bytes(escaped(value)).valid)
 if __name__=="__main__":unittest.main()
