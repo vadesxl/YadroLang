@@ -26,8 +26,12 @@ def _enum(value,name,allowed):
  if value not in allowed:raise ProofSealError(f"unsupported {name}: {value}")
  return value
 def _sort_key(value):return value.encode("utf-8")
+def _tuple(value,name):
+ if isinstance(value,(str,bytes)) or value is None:raise ProofSealError(f"{name} must be an iterable, not scalar")
+ try:return tuple(value)
+ except TypeError as error:raise ProofSealError(f"{name} must be iterable") from error
 def canonical_strings(values:Iterable[str],name,max_items=MAX_SEMANTIC_SET):
- raw=tuple(values)
+ raw=_tuple(values,name)
  if len(raw)>max_items:raise ProofSealError(f"too many {name}, maximum {max_items}")
  checked=tuple(_text(value,name) for value in raw)
  if len(set(checked))!=len(checked):raise ProofSealError(f"duplicate {name}")
@@ -42,8 +46,7 @@ def _canonical_mapping(mapping):
  data=(text+"\n").encode("utf-8")
  if len(data)>MAX_SEAL_BYTES:raise ProofSealError("proof exceeds maximum size")
  return data
-def _assumption_payload(symbol,abi_signature,capability,taint_transform,trusted_sanitizer,lifetime,no_retain,implementation_sha256):
- return {"abi_signature":abi_signature,"capability":capability,"implementation_sha256":implementation_sha256,"lifetime":lifetime,"no_retain":no_retain,"symbol":symbol,"taint_transform":taint_transform,"trusted_sanitizer":trusted_sanitizer}
+def _assumption_payload(symbol,abi_signature,capability,taint_transform,trusted_sanitizer,lifetime,no_retain,implementation_sha256):return {"abi_signature":abi_signature,"capability":capability,"implementation_sha256":implementation_sha256,"lifetime":lifetime,"no_retain":no_retain,"symbol":symbol,"taint_transform":taint_transform,"trusted_sanitizer":trusted_sanitizer}
 def _assumption_digest_fields(**payload):return hashlib.sha256(b"YADRO-ASSUMPTION\0"+_canonical_mapping(payload)).hexdigest()
 @dataclass(frozen=True,slots=True)
 class TrustState:
@@ -95,6 +98,7 @@ class AnalysisEvidence:
  entry_points:tuple[str,...];call_sites:tuple[CallSiteEvidence,...];assumptions:tuple[ExternalAssumption,...];fixpoint:FixpointEvidence
  def __post_init__(self):
   _require_canonical_strings(self.entry_points,"entry_points",MAX_ENTRY_POINTS)
+  if not isinstance(self.call_sites,tuple) or not isinstance(self.assumptions,tuple):raise ProofSealError("evidence collections must be tuples")
   if len(self.call_sites)>MAX_CALL_SITES or len(self.assumptions)>MAX_ASSUMPTIONS:raise ProofSealError("evidence collection exceeds bound")
   if not all(isinstance(x,CallSiteEvidence) for x in self.call_sites) or tuple(sorted(self.call_sites,key=lambda x:x.id))!=self.call_sites:raise ProofSealError("call_sites must be typed and sorted")
   if not all(isinstance(x,ExternalAssumption) for x in self.assumptions) or tuple(sorted(self.assumptions,key=lambda x:x.id))!=self.assumptions:raise ProofSealError("assumptions must be typed and sorted")
@@ -140,12 +144,14 @@ def make_assumption(symbol,abi_signature,capability,taint_transform,trusted_sani
  return ExternalAssumption(_assumption_digest_fields(**payload),**payload)
 def make_call_site(id,caller,callee,span,**sets):
  names=("required_capabilities","declared_capabilities","incoming_labels","outgoing_labels","sanitizers","declassified_labels","policy_rules","implicit_labels","reachable_entries")
- values={name:canonical_strings(sets.get(name,()),name,MAX_ENTRY_POINTS if name=="reachable_entries" else MAX_SEMANTIC_SET) for name in names};assumption_ids=tuple(sets.get("assumption_ids",()))
+ values={name:canonical_strings(sets.get(name,()),name,MAX_ENTRY_POINTS if name=="reachable_entries" else MAX_SEMANTIC_SET) for name in names};assumption_ids=_tuple(sets.get("assumption_ids",()),"assumption_ids")
  for item in assumption_ids:_digest(item,"assumption id")
  if len(set(assumption_ids))!=len(assumption_ids):raise ProofSealError("duplicate assumption id")
  values["assumption_ids"]=tuple(sorted(assumption_ids));return CallSiteEvidence(id,caller,callee,span,**values)
 def make_analysis(entry_points=(),call_sites=(),assumptions=(),fixpoint=None):
- calls=tuple(call_sites);assumps=tuple(assumptions)
+ calls=_tuple(call_sites,"call_sites");assumps=_tuple(assumptions,"assumptions")
+ if not all(isinstance(x,CallSiteEvidence) for x in calls):raise ProofSealError("call_sites must contain CallSiteEvidence")
+ if not all(isinstance(x,ExternalAssumption) for x in assumps):raise ProofSealError("assumptions must contain ExternalAssumption")
  if len({x.id for x in calls})!=len(calls) or len({x.id for x in assumps})!=len(assumps):raise ProofSealError("duplicate evidence id")
  return AnalysisEvidence(canonical_strings(entry_points,"entry_points",MAX_ENTRY_POINTS),tuple(sorted(calls,key=lambda x:x.id)),tuple(sorted(assumps,key=lambda x:x.id)),fixpoint or FixpointEvidence("bounded-monotone-1.0",(),0,1))
 def module_id(frontend,source_bytes):
