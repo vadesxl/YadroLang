@@ -6,13 +6,13 @@ from typing import Iterable
 MAX_SEAL_BYTES=1_048_576;MAX_CALL_SITES=10_000;MAX_ENTRY_POINTS=256;MAX_ASSUMPTIONS=2_000;MAX_SEMANTIC_SET=32;MAX_IDENTIFIER_BYTES=256;MAX_PATH_BYTES=512
 SCHEMA="yadro-proof-seal-1.0";POLICY_VERSION="yadro-policy-1.0";LLVM_NORMALIZATION_VERSION="yadro-llvm-normalization-1.0";_HEX=re.compile(r"^[0-9a-f]{64}$")
 class ProofSealError(ValueError):pass
-def _text(value,name,max_bytes=MAX_IDENTIFIER_BYTES,empty=False,controls=False):
+def _text(value,name,max_bytes=MAX_IDENTIFIER_BYTES,empty=False):
  if not isinstance(value,str):raise ProofSealError(f"{name} must be a string")
  if unicodedata.normalize("NFC",value)!=value:raise ProofSealError(f"{name} must be NFC")
  if not empty and not value:raise ProofSealError(f"{name} must not be empty")
  if len(value.encode("utf-8"))>max_bytes:raise ProofSealError(f"{name} exceeds {max_bytes} UTF-8 bytes")
  if "\x00" in value:raise ProofSealError(f"{name} contains NUL")
- if not controls and any(ord(ch)<32 or ord(ch)==127 for ch in value):raise ProofSealError(f"{name} contains control characters")
+ if any(ord(ch)<32 or ord(ch)==127 for ch in value):raise ProofSealError(f"{name} contains control characters")
  return value
 def _integer(value,name):
  if not isinstance(value,int) or isinstance(value,bool) or value<0:raise ProofSealError(f"{name} must be a nonnegative integer")
@@ -34,9 +34,17 @@ def canonical_strings(values:Iterable[str],name,max_items=MAX_SEMANTIC_SET):
  return tuple(sorted(checked,key=_sort_key))
 def safe_path(value):
  value=_text(value,"module_path",MAX_PATH_BYTES)
- if value.startswith("/") or "\\" in value or re.match(r"^[A-Za-z]:",value) or value.startswith("//"):raise ProofSealError("module_path must be slash-relative")
- if any(part in ("",".","..") for part in value.split("/")):raise ProofSealError("module_path has unsafe segment")
+ if value.startswith("/") or "\\" in value or re.match(r"^[A-Za-z]:",value) or value.startswith("//") or any(part in ("",".","..") for part in value.split("/")):raise ProofSealError("unsafe module_path")
  return value
+def _canonical_mapping(mapping):
+ try:text=json.dumps(mapping,ensure_ascii=False,sort_keys=True,separators=(",",":"),allow_nan=False)
+ except (TypeError,ValueError) as error:raise ProofSealError(f"cannot canonicalize: {error}") from error
+ data=(text+"\n").encode("utf-8")
+ if len(data)>MAX_SEAL_BYTES:raise ProofSealError("proof exceeds maximum size")
+ return data
+def _assumption_payload(symbol,abi_signature,capability,taint_transform,trusted_sanitizer,lifetime,no_retain,implementation_sha256):
+ return {"abi_signature":abi_signature,"capability":capability,"implementation_sha256":implementation_sha256,"lifetime":lifetime,"no_retain":no_retain,"symbol":symbol,"taint_transform":taint_transform,"trusted_sanitizer":trusted_sanitizer}
+def _assumption_digest_fields(**payload):return hashlib.sha256(b"YADRO-ASSUMPTION\0"+_canonical_mapping(payload)).hexdigest()
 @dataclass(frozen=True,slots=True)
 class TrustState:
  mode:str="unsigned";authenticity:str="not-provided"
@@ -64,7 +72,8 @@ class ExternalAssumption:
   _text(self.taint_transform,"taint transform",512);_text(self.lifetime,"lifetime",512)
   if not isinstance(self.trusted_sanitizer,bool) or not isinstance(self.no_retain,bool):raise ProofSealError("assumption flags must be bool")
   if self.implementation_sha256 is not None:_digest(self.implementation_sha256,"implementation digest")
-  if self.id!=_assumption_digest(self):raise ProofSealError("assumption id does not match content")
+  expected=_assumption_digest_fields(**_assumption_payload(self.symbol,self.abi_signature,self.capability,self.taint_transform,self.trusted_sanitizer,self.lifetime,self.no_retain,self.implementation_sha256))
+  if self.id!=expected:raise ProofSealError("assumption id does not match content")
 @dataclass(frozen=True,slots=True)
 class CallSiteEvidence:
  id:str;caller:str;callee:str;span:SourceSpan;required_capabilities:tuple[str,...];declared_capabilities:tuple[str,...];incoming_labels:tuple[str,...];outgoing_labels:tuple[str,...];sanitizers:tuple[str,...];declassified_labels:tuple[str,...];policy_rules:tuple[str,...];implicit_labels:tuple[str,...];assumption_ids:tuple[str,...];reachable_entries:tuple[str,...];status:str="allowed"
@@ -123,23 +132,12 @@ def _plain(value):
  if hasattr(value,"__dataclass_fields__"):return {field.name:_plain(getattr(value,field.name)) for field in fields(value)}
  if value is None or isinstance(value,(str,bool,int)):return value
  raise ProofSealError(f"unsupported canonical value: {type(value).__name__}")
-def _canonical_mapping(mapping):
- try:text=json.dumps(mapping,ensure_ascii=False,sort_keys=True,separators=(",",":"),allow_nan=False)
- except (TypeError,ValueError) as error:raise ProofSealError(f"cannot canonicalize: {error}") from error
- data=(text+"\n").encode("utf-8")
- if len(data)>MAX_SEAL_BYTES:raise ProofSealError("proof exceeds maximum size")
- return data
-def _assumption_payload(value):return {"abi_signature":value.abi_signature,"capability":value.capability,"implementation_sha256":value.implementation_sha256,"lifetime":value.lifetime,"no_retain":value.no_retain,"symbol":value.symbol,"taint_transform":value.taint_transform,"trusted_sanitizer":value.trusted_sanitizer}
-def _assumption_digest(value):return hashlib.sha256(b"YADRO-ASSUMPTION\0"+_canonical_mapping(_assumption_payload(value))).hexdigest()
 def _core_mapping(core):return {"analysis":_plain(core.analysis),"compiler":_plain(core.compiler),"schema":core.schema,"subject":_plain(core.subject),"trust":_plain(core.trust)}
 def _seal_digest(core):return hashlib.sha256(b"YADRO-PROOF-SEAL\0"+b"1.0\0"+_canonical_mapping(_core_mapping(core))).hexdigest()
 def make_assumption(symbol,abi_signature,capability,taint_transform,trusted_sanitizer,lifetime,no_retain,implementation_sha256=None):
- payload={"symbol":_text(symbol,"symbol"),"abi_signature":_text(abi_signature,"ABI signature",512),"capability":None if capability is None else _text(capability,"capability"),"taint_transform":_text(taint_transform,"taint transform",512),"trusted_sanitizer":trusted_sanitizer,"lifetime":_text(lifetime,"lifetime",512),"no_retain":no_retain,"implementation_sha256":None if implementation_sha256 is None else _digest(implementation_sha256,"implementation digest")}
+ payload=_assumption_payload(_text(symbol,"symbol"),_text(abi_signature,"ABI signature",512),None if capability is None else _text(capability,"capability"),_text(taint_transform,"taint transform",512),trusted_sanitizer,_text(lifetime,"lifetime",512),no_retain,None if implementation_sha256 is None else _digest(implementation_sha256,"implementation digest"))
  if not isinstance(trusted_sanitizer,bool) or not isinstance(no_retain,bool):raise ProofSealError("assumption flags must be bool")
- provisional=object.__new__(ExternalAssumption)
- for name,value in payload.items():object.__setattr__(provisional,name,value)
- identity=_assumption_digest(provisional)
- return ExternalAssumption(identity,**payload)
+ return ExternalAssumption(_assumption_digest_fields(**payload),**payload)
 def make_call_site(id,caller,callee,span,**sets):
  names=("required_capabilities","declared_capabilities","incoming_labels","outgoing_labels","sanitizers","declassified_labels","policy_rules","implicit_labels","reachable_entries")
  values={name:canonical_strings(sets.get(name,()),name,MAX_ENTRY_POINTS if name=="reachable_entries" else MAX_SEMANTIC_SET) for name in names};assumption_ids=tuple(sets.get("assumption_ids",()))
