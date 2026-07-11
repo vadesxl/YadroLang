@@ -1,48 +1,39 @@
 # Печать Ядра v1
 
-Статус: нормативный дизайн, не реализованная команда и не release claim.
+Статус: нормативный дизайн до public v1 freeze, не реализованная команда и не release claim.
 
-## Назначение
+## Назначение и границы
 
-Печать Ядра (`Yadro Proof Seal`, `.yproof`) является детерминированным compile-time evidence artifact. Она связывает успешный policy analysis с verified LLVM module и точными bytes emitted native object. Auditor может проверить object, policy и seal offline, без исходников и исполнения object.
+Печать Ядра (`Yadro Proof Seal`, `.yproof`) является детерминированным compile-time evidence artifact. Она связывает успешный policy analysis с verified LLVM module и точными bytes native object. Seal доказывает только versioned policy contract относительно перечисленных assumptions, не общую этичность AI, не completeness и не whole-program formal proof.
 
-В исследованной выборке прямой продуктовый аналог не найден. Это не заявление об абсолютной уникальности или патентной чистоте. Seal доказывает только versioned policy contract относительно перечисленных assumptions, не общую этичность AI.
-
-## Trust modes
-
-V1 core unsigned. Self-digest обнаруживает corruption/mismatch, но не authenticity: coordinated replacement artifact + policy + seal остается возможным. Unsigned verification требует trusted delivery channel или externally anchored digest.
-
-Машиночитаемый top-level trust state: `{"mode":"unsigned","authenticity":"not-provided"}`. JSON verifier output повторяет поля; text output пишет `unsigned: authenticity not established` и не использует `trusted` для unsigned success. Authenticated mode требует future DSSE/Sigstore envelope, не самодельную криптографию.
+V1 core unsigned. Self-digest обнаруживает corruption/mismatch, но не authenticity или provenance. Машиночитаемый trust state: `{"mode":"unsigned","authenticity":"not-provided"}`. `inspect` не является security gate. DSSE/Sigstore является будущей отдельной фазой.
 
 ## Pipeline
 
 ```text
 source -> parse -> semantics/types -> Ethical Checker -> immutable evidence
                                                        |
-                                                       v
                                     LLVM CodeGen -> parse/verify
                                                        |
-                                                       v
                                       native object -> exact digest
                                                        |
-                                                       v
                                     canonical seal -> atomic write
 ```
 
-Seal отсутствует при policy violation, LLVM failure или object emission failure. Output uses temporary regular file in trusted destination directory, flush/fsync where supported and atomic replace. Symlink/non-regular destinations fail before creation and before replace. Untrusted parent directory is a non-goal.
+Seal отсутствует при policy violation, LLVM failure или object emission failure.
 
 ## Two-stage verifier dispatch
 
-Version discovery is a bounded preflight, not validation with the v1 schema:
+Verifier bounded preflight:
 
-1. read at most 1 MiB;
-2. parse JSON with duplicate-key rejection and maximum nesting 16;
-3. require top-level object and read only `schema`, `subject.policy_schema_version` and `subject.llvm_normalization_version` as bounded strings;
-4. select an exact supported schema/canonicalizer tuple;
-5. if unsupported, return controlled unsupported-version diagnostic without policy/LLVM canonicalization;
-6. revalidate the already parsed value against selected strict schema, including unknown-field rejection.
+1. читает не более 1 MiB;
+2. разбирает JSON с duplicate-key rejection и depth 16;
+3. извлекает только `schema`, `subject.policy_schema_version`, `subject.llvm_normalization_version` как bounded strings;
+4. выбирает точный validator/canonicalizer tuple;
+5. unsupported tuple даёт controlled version diagnostic;
+6. затем выполняется полная strict validation с unknown-field rejection.
 
-Preflight does not accept the proof as valid and does not hash it. This avoids the chicken-and-egg failure where a v1 schema `const` would reject a future version before dispatcher can identify it.
+Preflight не принимает proof как valid и не хеширует его.
 
 ## Deterministic core
 
@@ -50,54 +41,33 @@ Schema: `yadro-proof-seal-1.0`.
 
 Canonical bytes:
 
-- UTF-8 without BOM; strings must already be NFC;
-- object keys sorted by Unicode code point;
-- compact separators;
-- non-ASCII emitted directly;
-- standard lowercase JSON escapes for quote/backslash/controls, `/` unescaped;
-- exactly one trailing LF;
-- decimal integers without leading/negative zero; floats forbidden;
-- every integer is in `0..9007199254740991` (`2^53-1`, JavaScript `Number.MAX_SAFE_INTEGER`);
-- duplicate/unknown fields rejected;
-- no timestamps, hostnames, usernames or absolute paths.
+- UTF-8 без BOM, ровно один trailing LF;
+- strings являются NFC Unicode scalar sequences, surrogate code points запрещены;
+- object keys сортируются по Unicode code point;
+- compact separators, non-ASCII emitted directly;
+- integers только `0..9007199254740991`, floats запрещены;
+- duplicate/unknown fields запрещены;
+- semantic sets unique и сортируются по canonical UTF-8 bytes;
+- `call_sites` и `assumptions` сортируются по `id`;
+- никаких timestamps, hostnames, usernames или absolute paths.
 
-The safe-integer ceiling is normative for public cross-language JSON interoperability. It applies to source byte offsets, ordinals, fixpoint updates and bounds. Values above it, negative integers, booleans in integer positions, floats and exponent notation are rejected without rounding.
-
-Array order:
-
-- all semantic sets (labels, capabilities, sanitizers, declassified labels, rules, implicit labels, assumption IDs, lattice labels) sort by canonical UTF-8 bytes;
-- `call_sites` sort by `id`;
-- `assumptions` sort by `id`;
-- `entry_points` and `reachable_entries` sort by ABI symbol canonical UTF-8 bytes.
-
-All arrays are unique; unsorted unique arrays are rejected.
-
-`seal_sha256` is excluded from payload:
+`seal_sha256` исключается из payload:
 
 ```text
 SHA-256("YADRO-PROOF-SEAL\0" || "1.0\0" || canonical_payload_without_seal_sha256)
 ```
 
-Received full document bytes must also equal canonical encoding. Self-digest is not authentication.
+Received document bytes должны совпасть с canonical encoding. Self-digest не является authentication.
 
 ## Bounds
 
-V1: 1 MiB seal, depth 16, 10,000 call sites, 256 entries, 2,000 assumptions, 32 values per semantic set, 256 UTF-8 bytes per identifier, 512 per diagnostic module path and `MAX_SAFE_INTEGER = 9007199254740991` for every integer. Bounds are enforced before proportional allocation.
+V1: seal 1 MiB, depth 16, 10,000 call sites, 256 entries, 2,000 assumptions, 32 values per semantic set, 256 UTF-8 bytes per identifier, 512 UTF-8 bytes per diagnostic module path. Bounds проверяются до proportional allocation.
 
-## Subject binding and versions
+## Subject binding
 
-Open fields precede digests:
+Subject хранит visible `policy_schema_version = yadro-policy-1.0`, `llvm_normalization_version = yadro-llvm-normalization-1.0`, exact source/policy/normalized LLVM/artifact SHA-256, target triple и artifact kind. Verifier никогда не подставляет текущие defaults.
 
-- `policy_schema_version = yadro-policy-1.0`;
-- `llvm_normalization_version = yadro-llvm-normalization-1.0`;
-- exact source, canonical effective policy, normalized verified LLVM and exact artifact SHA-256;
-- target triple and artifact kind.
-
-Version strings are included in domain-separated canonical inputs. Effective policy includes schema version, all sorted sources/sinks/sanitizers and selected built-ins. Verifier never substitutes current defaults.
-
-LLVM normalization parses/verifies, serializes through pinned compatibility, normalizes LF and appends one LF. Cross-LLVM stability is not promised. Exact object binding is not cross-toolchain reproducibility.
-
-Without source/IR, verifier independently recomputes policy/artifact hashes only; source/LLVM/analysis are compiler attestations whose authenticity depends on trust mode.
+Без source/IR verifier независимо подтверждает только доступные bindings; source/LLVM/analysis остаются compiler attestations, authenticity которых зависит от trust mode.
 
 ## Stable evidence identities
 
@@ -107,11 +77,15 @@ Module ID:
 SHA-256("YADRO-MODULE\0" || frontend || "\0" || exact_source_bytes)
 ```
 
+Serialized call site содержит `id`, `module_id`, `semantic_kind`, `caller`, `callee`, `span`, semantic evidence sets и `status`. `compiler.frontend` берётся из top-level compiler identity и не дублируется. V1 semantic-kind vocabulary содержит одно стабильное нелокализованное значение: `call`.
+
 Call-site ID:
 
 ```text
-SHA-256("YADRO-CALL-SITE\0" || frontend || "\0" || module_id || "\0" || caller_abi || "\0" || callee_abi || "\0" || ast_kind || "\0" || start_byte || ":" || end_byte || "\0" || ordinal)
+SHA-256("YADRO-CALL-SITE\0" || frontend || "\0" || module_id || "\0" || caller || "\0" || callee || "\0" || semantic_kind || "\0" || start_byte || "\0" || end_byte || "\0" || ordinal)
 ```
+
+Эта формула совпадает с shared Phase 1 implementation: domain separator уже содержит terminal NUL, затем identity fields соединяются одиночным NUL. `module_id` является lowercase SHA-256. `semantic_kind` обязан быть `call`. Verifier реконструирует inputs и сравнивает serialized/computed ID через constant-time comparison.
 
 Assumption ID:
 
@@ -119,84 +93,48 @@ Assumption ID:
 SHA-256("YADRO-ASSUMPTION\0" || canonical_assumption_without_id)
 ```
 
-Policy rule IDs are versioned identifiers from effective policy schema, not display text. Any source-byte change may invalidate every call-site ID by design. Duplicate IDs fail closed.
+Старый pre-freeze draft без `module_id`/`semantic_kind` был непроверяемым и намеренно не поддерживается. Это schema correction до public v1 freeze.
 
-Span invariants are semantic checks beyond JSON Schema: `start_byte <= end_byte <= source_byte_length`; offsets lie on UTF-8 code-point boundaries; ordinal is unique within caller; span maps to the expected effectful AST node and callee. Since source-free verifier cannot independently re-map spans, these remain compiler attestations.
+Span invariants: `start_byte <= end_byte`, offsets и ordinal находятся в safe-integer range. Mapping span к source node остаётся compiler attestation, пока source-free verifier не имеет source bytes.
 
-Diagnostic module path is not identity. It uses `/`, is relative and has no empty, `.`/`..`, control, drive or UNC segments. Semantic validation, not regex alone, is security boundary.
+Diagnostic module path не является identity, использует `/`, является relative и запрещает empty, `.`/`..`, controls, drive и UNC segments.
 
 ## Evidence model
 
-Typed immutable evidence comes from Ethical Checker, never human audit text. Each reachable effectful call records identity/span, caller/callee ABI, reachable entries, required/declared capabilities, incoming/outgoing labels, sanitizers/declassification, policy rules, implicit labels, assumptions and `allowed` status.
+Typed immutable evidence приходит из Ethical Checker. Каждый reachable effectful call записывает content-bound identity/span, caller/callee ABI, reachable entries, required/declared capabilities, incoming/outgoing labels, sanitizers/declassification, policy rules, implicit labels, assumptions и `allowed` status. Violation создаёт diagnostics и не создаёт seal.
 
-Violation produces diagnostics and no seal. Partial report cannot use `.yproof`. Fixpoint evidence records algorithm, sorted lattice, updates and bound, not timing.
+External assumption хранит content ID, ABI symbol/signature, capability, taint transform, trusted-sanitizer flag, ownership/lifetime, no-retain и optional implementation digest. Компилятор доказывает свойства только относительно этих assumptions.
 
-## FFI/tool trust boundary
+## Identity is not completeness
 
-Each external assumption records stable ID, ABI symbol/signature, capability, taint transformation, trusted-sanitizer flag, ownership/lifetime, no-retain and optional implementation digest.
-
-Компилятор доказал свойства программы относительно перечисленных assumptions, но не доказал соблюдение assumptions внешней реализацией.
-
-Capability does not confer trust. Sanitization does not extend lifetime or alter provenance. Missing assumption fails closed.
-
-## MCP evidence
-
-Only versioned Yadro MCP security manifest is supported. Evidence may bind canonical manifest/graph digests, roots, fixpoint count, labels, sanitizers, capabilities and per-tool evidence. This is not universal MCP certification.
+Verifier подтверждает identity только записанных call sites. Malicious или buggy producer всё ещё может опустить evidence. Completeness требует будущей compiler integration и coverage invariants. `verify_bytes` подтверждает consistency, не authenticity. Никакая часть v1 unsigned seal не заявляет production readiness или формальное доказательство общей этичности.
 
 ## Offline verifier
 
-No network, artifact execution or plugins. Verifier enforces schema/bounds/NFC/order/paths/canonical bytes, recomputes self/policy/artifact digests and inspects object:
-
-- ELF: magic, class, endianness, header/section bounds, `ET_REL`, `e_machine`;
-- Mach-O: 64-bit magic with correct endianness, load-command bounds, `MH_OBJECT`, `cputype/cpusubtype`;
-- COFF: complete header, section table bounds, Machine (`0x8664` for AMD64).
-
-Inspected format/machine must match artifact kind, target triple and deployment expectation. Filename is irrelevant. Deterministic output includes trust state.
-
-Proposed only:
-
-```bash
-yadro-guard compile program.яд --policy policy.json --emit-proof program.yproof -o program.o
-yadro-guard proof verify program.yproof --artifact program.o --policy policy.json
-yadro-guard proof inspect program.yproof --format json
-```
-
-`inspect` never implies verification.
+Verifier не использует сеть, plugins и не исполняет artifact. Он проверяет schema, bounds, NFC/scalars, ordering, paths, content IDs, canonical bytes, self/policy/artifact digests и bounded object headers. ELF/Mach-O/COFF format/machine должны соответствовать artifact kind и target triple. Filename не является доказательством.
 
 ## Exit classes
 
-`0` structural/binding match with trust state; `2` compile-time policy violation; `3` malformed/unsupported/mismatch; `4` internal failure.
-
-## Threats and non-goals
-
-With trusted channel/future envelope: detects swaps, stale bytes, target mismatch and downgrade. Parser handles duplicate keys, Unicode confusion, unsafe paths, resource exhaustion, ID collision, hidden assumptions and nondeterminism.
-
-Unsigned coordinated replacement, malicious compiler/build host, compromised external implementation, untrusted output directory, hardware attacks, unsupported language properties, cross-toolchain reproducibility and general AI benevolence are non-goals.
+`0` structural/binding match с trust state; `2` compile-time policy violation; `3` malformed/unsupported/mismatch; `4` internal failure.
 
 ## Required tests
 
-- byte-identical output and golden JSON escapes;
-- every array category rejects unsorted/duplicate values;
-- machine-readable unsigned trust result;
-- bounded preflight selects versions before strict schema and rejects unsupported tuple;
-- NFC, duplicate/unknown fields, truncation, size/depth and non-canonical bytes fail;
-- safe-integer boundaries accept `0`, `1`, `9007199254740990`, `9007199254740991` and reject larger, negative, boolean and floating values across schema/model/verifier;
-- max integer serializes as exact decimal JSON without exponent notation or rounding;
-- span/order/ID invariants and domain-separated golden vectors;
-- paths/symlinks fail under trusted-parent contract;
-- artifact/policy/target swaps and mutation fail against fixed trust anchor;
-- coordinated substitution accepted unsigned and rejected by future envelope;
-- strict ELF/Mach-O/COFF header, architecture and bounds checks;
-- direct/sanitized/implicit/recursive flows and FFI assumptions;
-- violation emits no seal;
-- Linux/macOS/Windows, no skip, hard toolchain failure and finite timeouts.
+- byte-identical canonical output и golden domain vectors;
+- every array rejects unsorted/duplicate values;
+- version preflight before strict schema;
+- NFC, surrogates, duplicate/unknown fields, truncation, size/depth и non-canonical bytes fail controlled;
+- forged call-site ID с пересчитанным outer seal fail;
+- mutation frontend/module/caller/callee/semantic_kind/span/ordinal обнаруживается;
+- identity domain separation module/call-site/assumption;
+- paths, references, artifact/policy/target swaps fail;
+- Linux/macOS/Windows, no skip, hard failures и finite timeouts.
 
 ## Phases
 
-1. Immutable evidence and canonical serializer.
-2. Bounded preflight, strict verifier and unsigned result.
-3. LLVM/object binding and atomic output.
-4. Ethical Checker/MCP export.
-5. Standard envelope and English parity.
+1. Immutable evidence и canonical serializer.
+2. Bounded preflight, strict verifier и unsigned result.
+3. LLVM/object binding и atomic output.
+4. Ethical Checker/MCP export и completeness invariants.
+5. Standard authenticated envelope и English parity.
 
-Each phase is a separate reviewed PR. This PR implements no command.
+Каждая фаза проходит отдельное exact-head review. Этот документ не реализует команды.
