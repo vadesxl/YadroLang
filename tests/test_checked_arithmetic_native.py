@@ -23,7 +23,7 @@ class ТестыCheckedArithmeticNative(unittest.TestCase):
  def test_safe_boundary(self):
   result=self.run_case("x + 0","9223372036854775807");self.assertEqual(0,result.returncode);self.assertIn(b"9223372036854775807",result.stdout)
  def test_runtime_traps(self):
-  cases=(("x + 1","9223372036854775807"),("x - 1","-9223372036854775807 - 1"),("x * 2","9223372036854775807"),("1 / x","0"),("x / -1","-9223372036854775807 - 1"))
+  cases=(("x + 1","9223372036854775807"),("x - 1","-9223372036854775807 - 1"),("x * 2","9223372036854775807"),("1 / x","0"),("x / (0 - 1)","-9223372036854775807 - 1"))
   for expression,value in cases:
    with self.subTest(expression=expression):self.assertNotEqual(0,self.run_case(expression,value).returncode)
 if __name__=="__main__":unittest.main()
