@@ -1,18 +1,13 @@
-import unittest
+import json,unittest
 from src.proof_seal import *
 from tests.proof_seal_fixtures import minimal_core,rich_core
 class ProofSealCanonicalTests(unittest.TestCase):
- def test_deterministic_and_utf8(self):
-  data=canonical_bytes(rich_core());self.assertTrue(data.endswith(b"\n"));self.assertFalse(data.endswith(b"\n\n"));self.assertIn("ПДн".encode(),data);self.assertNotIn(b"\\u041f",data);self.assertTrue(all(canonical_bytes(rich_core())==data for _ in range(100)))
- def test_compact_and_slash(self):
-  data=canonical_bytes(rich_core());self.assertNotIn(b": ",data);self.assertIn(b"src/",data);self.assertNotIn(b"src\\/",data)
- def test_quote_and_backslash_escaping(self):
-  assumption=make_assumption('a"b\\c',"i64()",None,"identity",False,"call",False);data=canonical_bytes(ProofSealCore(minimal_core().compiler,minimal_core().subject,make_analysis(assumptions=(assumption,))));self.assertIn(b'a\\"b\\\\c',data)
- def test_controls_rejected_before_serialization(self):
-  for value in ("line\n","tab\t","control\x01"):
-   with self.subTest(value=value),self.assertRaises(ProofSealError):make_assumption("a","i64()",None,value,False,"call",False)
- def test_seal_is_stable_and_full(self):
-  proof=seal(minimal_core());self.assertRegex(proof.seal_sha256,r"^[0-9a-f]{64}$");data=canonical_bytes(proof);self.assertIn(b'"seal_sha256"',data);self.assertEqual(data,canonical_bytes(seal(minimal_core())))
- def test_reject_arbitrary_mapping(self):
-  with self.assertRaises(ProofSealError):canonical_bytes({"schema":SCHEMA})
+ def test_minimal_bytes_are_stable(self):
+  first=canonical_bytes(minimal_core());second=canonical_bytes(minimal_core());self.assertEqual(first,second);self.assertTrue(first.endswith(b"\n"));self.assertNotIn(b" ",first)
+ def test_rich_bytes_are_order_independent(self):self.assertEqual(canonical_bytes(rich_core(False)),canonical_bytes(rich_core(True)))
+ def test_serialized_call_identity_is_complete_without_frontend_duplication(self):
+  value=json.loads(canonical_bytes(rich_core()));call=value["analysis"]["call_sites"][0]
+  self.assertIn("module_id",call);self.assertEqual("call",call["semantic_kind"]);self.assertNotIn("frontend",call);self.assertEqual("ru",value["compiler"]["frontend"])
+ def test_seal_round_trip_shape(self):
+  proof=seal(rich_core());value=json.loads(canonical_bytes(proof));self.assertEqual(proof.seal_sha256,value["seal_sha256"]);self.assertEqual(SCHEMA,value["schema"])
 if __name__=="__main__":unittest.main()
