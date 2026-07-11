@@ -20,10 +20,14 @@ class ТестыCheckedArithmeticNative(unittest.TestCase):
    self.assertEqual(0,link.returncode,f"command={command}\nstdout={link.stdout}\nstderr={link.stderr}")
    try:return subprocess.run([str(exe)],capture_output=True,timeout=TIMEOUT)
    except subprocess.TimeoutExpired as error:self.fail(f"native executable завис более {TIMEOUT}s: {error.cmd[0]}")
- def test_safe_boundary(self):
-  result=self.run_case("x + 0","9223372036854775807");self.assertEqual(0,result.returncode);self.assertIn(b"9223372036854775807",result.stdout)
+ def test_safe_operations(self):
+  cases=(("x + 0","9223372036854775807",b"9223372036854775807"),("x - 1","43",b"42"),("x * 2","21",b"42"),("x / 2","84",b"42"))
+  for expression,value,expected in cases:
+   with self.subTest(expression=expression):
+    result=self.run_case(expression,value);self.assertEqual(0,result.returncode,result.stderr);self.assertIn(expected,result.stdout)
  def test_runtime_traps(self):
   cases=(("x + 1","9223372036854775807"),("x - 1","-9223372036854775807 - 1"),("x * 2","9223372036854775807"),("1 / x","0"),("x / (0 - 1)","-9223372036854775807 - 1"))
   for expression,value in cases:
-   with self.subTest(expression=expression):self.assertNotEqual(0,self.run_case(expression,value).returncode)
+   with self.subTest(expression=expression):
+    result=self.run_case(expression,value);self.assertNotEqual(0,result.returncode);self.assertNotIn("Результат".encode("utf-8"),result.stdout)
 if __name__=="__main__":unittest.main()
