@@ -18,6 +18,9 @@ class ProofSealModelTests(unittest.TestCase):
   for value in (0,1,MAX_SAFE_INTEGER-1,MAX_SAFE_INTEGER):
    with self.subTest(value=value):self.assertEqual(value,SourceSpan("x",value,value,value).ordinal)
   data=canonical_bytes(ProofSealCore(minimal_core().compiler,minimal_core().subject,make_analysis(fixpoint=FixpointEvidence("bounded-monotone-1.0",(),MAX_SAFE_INTEGER,MAX_SAFE_INTEGER))));self.assertIn(str(MAX_SAFE_INTEGER).encode(),data);self.assertNotIn(b"e+",data.lower())
+ def test_call_frontend_must_match_compiler_context(self):
+  span=SourceSpan("x",0,1,0);call=make_call_site("ru",module_id("ru",b"x"),"call","a","b",span);analysis=make_analysis(call_sites=(call,));compiler=CompilerIdentity("yadro-guard","2.1.0","en","1.0")
+  with self.assertRaisesRegex(ProofSealError,"frontend does not match"):ProofSealCore(compiler,minimal_core().subject,analysis)
  def test_hash_validation(self):
   for value in ("A"*64,"0"*63,"g"*64):
    with self.subTest(value=value),self.assertRaises(ProofSealError):SubjectBinding(POLICY_VERSION,LLVM_NORMALIZATION_VERSION,value,ZERO,ZERO,ZERO,"x","elf-object")
