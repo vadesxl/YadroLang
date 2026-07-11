@@ -76,6 +76,8 @@ const uint8_t *data, uint64_t len
 
 Пара скаляров выбрана вместо C struct-by-value, чтобы не зависеть от target-specific правил возврата и классификации агрегатов. Имя external symbol по-прежнему связывает полную сигнатуру. `string` считается двумя ABI-аргументами, но одним аргументом языка.
 
+FFI является явной границей доверия: компилятор доказывает корректность view только до входа во внешний код, а соблюдение `len`, read-only доступа и запрета retain обеспечивается проверенным ABI-контрактом и доверенной реализацией внешней функции.
+
 Внешняя функция получает borrow только на время вызова. Retain запрещен по умолчанию. API, сохраняющий данные, обязан принимать копию через отдельный будущий owner API; одного capability-мандата недостаточно для ослабления memory safety.
 
 Возврат строк из FFI в v1 запрещен. Будущий контракт обязан отдельно определить owner, destructor, UTF-8 validation, максимальную длину и поведение при null.
@@ -117,16 +119,28 @@ Memory safety и этическая политика независимы и о�
 
 ## Обязательные тесты реализации
 
+Этот design PR фиксирует нормативные ожидания и не заявляет прохождение runtime-тестов. Тесты распределены по следующим implementation PR:
+
+### Фаза 1: literal view и bounded printing
+
 1. LLVM shape: литерал понижается в `{ptr, i64}` с точной UTF-8 длиной.
 2. Empty/null: пустая строка безопасна и не dereference null.
 3. Embedded NUL: `"a\0b"` сохраняет длину 3 и не обрезается.
 4. Unicode: длина считается в UTF-8 байтах.
-5. Escape: возврат stack view и сохранение foreign borrow отклоняются стабильными кодами.
-6. FFI: C stub получает точные pointer и length на Linux, macOS и Windows.
 7. Native: object, link и run обязательны на трех ОС, без skip.
-8. Adversarial: `len` overflow, null с ненулевой длиной и invalid UTF-8 fail-closed.
 9. Optimized IR: `-O2` сохраняет observable bytes и length.
 10. Regression: текущая `печать("...")` остается рабочей, но использует bounded output, не `%s`.
+
+### Фаза 2: stack provenance и escape analysis
+
+5. Escape: возврат stack view отклоняется стабильным кодом.
+8. Adversarial: `len` overflow и null с ненулевой длиной fail-closed.
+
+### Фаза 3: foreign API и trust boundary
+
+5. Escape: сохранение foreign borrow отклоняется стабильным кодом.
+6. FFI: C stub получает точные pointer и length на Linux, macOS и Windows.
+8. Adversarial: invalid UTF-8 на foreign boundary fail-closed.
 
 ## Не входит в v1
 
