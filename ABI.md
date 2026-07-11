@@ -2,8 +2,8 @@
 
 Yadro Guard генерирует C-compatible collision-resistant symbols:
 
-- пользовательские функции: `yadro_fn_ _ `
-- policy/runtime функции: `yadro_abi_v1_ _ `
+- пользовательские функции: `yadro_fn_<readable>_<sha256-prefix>`
+- policy/runtime функции: `yadro_abi_v1_<readable>_<sha256-prefix>`
 - process entry: `main`
 
 Readable-часть служит диагностике; 16 hex SHA-256 связывает полное UTF-8 имя. Параметры и возвраты используют выведенные LLVM scalar types. Policy sources/sinks/sanitizers сейчас возвращают signed i64.
