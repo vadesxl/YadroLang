@@ -2,7 +2,7 @@
 """Phase 2: bounded, strict, offline verification of Yadro Proof Seal bytes."""
 from dataclasses import dataclass
 import hmac,json,unicodedata
-from src.proof_seal import (MAX_SEAL_BYTES,MAX_CALL_SITES,MAX_ENTRY_POINTS,MAX_ASSUMPTIONS,MAX_SEMANTIC_SET,MAX_IDENTIFIER_BYTES,MAX_PATH_BYTES,SCHEMA,POLICY_VERSION,LLVM_NORMALIZATION_VERSION,ProofSealError,TrustState,CompilerIdentity,SourceSpan,ExternalAssumption,CallSiteEvidence,FixpointEvidence,AnalysisEvidence,SubjectBinding,ProofSealCore,ProofSeal,make_assumption,canonical_bytes,seal,safe_path)
+from src.proof_seal import (MAX_SEAL_BYTES,MAX_CALL_SITES,MAX_ENTRY_POINTS,MAX_ASSUMPTIONS,MAX_SEMANTIC_SET,MAX_IDENTIFIER_BYTES,SCHEMA,POLICY_VERSION,LLVM_NORMALIZATION_VERSION,ProofSealError,TrustState,CompilerIdentity,SourceSpan,CallSiteEvidence,FixpointEvidence,AnalysisEvidence,SubjectBinding,ProofSealCore,ProofSeal,make_assumption,canonical_bytes,seal)
 MAX_DEPTH=16
 class ProofVerificationError(ValueError):
  code="ЯДРО-П0000"
@@ -56,10 +56,15 @@ def _pairs(pairs):
   result[key]=value
  return result
 
+def _json_integer(text):
+ if len(text.lstrip("-"))>20:raise ProofValueError("JSON integer exceeds digit limit")
+ return int(text)
+def _no_float(_):raise ProofValueError("floating-point JSON values are forbidden")
+
 def _parse(data):
  text=_decode(data);_scan_depth(text)
- try:return json.loads(text,object_pairs_hook=_pairs)
- except ProofDuplicateKeyError:raise
+ try:return json.loads(text,object_pairs_hook=_pairs,parse_int=_json_integer,parse_float=_no_float,parse_constant=_no_float)
+ except ProofVerificationError:raise
  except json.JSONDecodeError as error:raise ProofSyntaxError("invalid JSON syntax") from error
 
 def _nfc(value,name,max_bytes=MAX_IDENTIFIER_BYTES,empty=False):
@@ -72,18 +77,15 @@ def _nfc(value,name,max_bytes=MAX_IDENTIFIER_BYTES,empty=False):
 
 def _obj(value,required,name):
  if not isinstance(value,dict):raise ProofStructureError(f"{name} must be an object")
- actual=set(value);expected=set(required)
- if actual!=expected:raise ProofStructureError(f"{name} fields do not match schema")
+ if set(value)!=set(required):raise ProofStructureError(f"{name} fields do not match schema")
  return value
 
 def _integer(value,name,minimum=0):
  if not isinstance(value,int) or isinstance(value,bool) or value<minimum:raise ProofValueError(f"{name} must be an integer >= {minimum}")
  return value
-
 def _boolean(value,name):
  if not isinstance(value,bool):raise ProofValueError(f"{name} must be boolean")
  return value
-
 def _hash(value,name):
  value=_nfc(value,name,64)
  if len(value)!=64 or any(ch not in "0123456789abcdef" for ch in value):raise ProofValueError(f"{name} must be lowercase SHA-256")
@@ -98,11 +100,11 @@ def _ordered_strings(value,name,max_items=MAX_SEMANTIC_SET,hashes=False):
 
 def _preflight(root):
  if not isinstance(root,dict):raise ProofVersionError("proof root must be an object")
- schema=_nfc(root.get("schema"),"schema",64)
- subject=root.get("subject")
- if not isinstance(subject,dict):raise ProofVersionError("subject versions are missing")
- policy=_nfc(subject.get("policy_schema_version"),"policy schema version",64)
- llvm=_nfc(subject.get("llvm_normalization_version"),"LLVM normalization version",64)
+ try:
+  schema=_nfc(root.get("schema"),"schema",64);subject=root.get("subject")
+  if not isinstance(subject,dict):raise ProofVersionError("subject versions are missing")
+  policy=_nfc(subject.get("policy_schema_version"),"policy schema version",64);llvm=_nfc(subject.get("llvm_normalization_version"),"LLVM normalization version",64)
+ except ProofValueError as error:raise ProofVersionError("proof version fields are missing or invalid") from error
  if (schema,policy,llvm)!=(SCHEMA,POLICY_VERSION,LLVM_NORMALIZATION_VERSION):raise ProofVersionError("proof version tuple is unsupported")
  return schema
 
@@ -110,17 +112,14 @@ def _trust(value):
  value=_obj(value,("mode","authenticity"),"trust");mode=_nfc(value["mode"],"trust mode");auth=_nfc(value["authenticity"],"authenticity")
  if (mode,auth)!=("unsigned","not-provided"):raise ProofValueError("unsupported trust state")
  return TrustState(mode,auth)
-
 def _compiler(value):
  value=_obj(value,("name","version","frontend","semantic_surface","evidence_algorithm","llvm_compatibility"),"compiler")
  try:return CompilerIdentity(value["name"],value["version"],value["frontend"],value["semantic_surface"],value["evidence_algorithm"],value["llvm_compatibility"])
  except ProofSealError as error:raise ProofValueError("invalid compiler identity") from error
-
 def _subject(value):
  names=("policy_schema_version","llvm_normalization_version","source_sha256","policy_sha256","llvm_sha256","artifact_sha256","target_triple","artifact_kind");value=_obj(value,names,"subject")
  try:return SubjectBinding(*(value[name] for name in names))
  except ProofSealError as error:raise ProofValueError("invalid subject binding") from error
-
 def _span(value):
  value=_obj(value,("module_path","start_byte","end_byte","ordinal"),"span")
  try:return SourceSpan(value["module_path"],value["start_byte"],value["end_byte"],value["ordinal"])
@@ -176,7 +175,6 @@ def _pipeline(data,verify):
   except ProofSealError as error:raise ProofDigestError("seal digest mismatch") from error
   if not hmac.compare_digest(canonical_bytes(proof),data):raise ProofCanonicalError("proof bytes are not canonical")
  return VerificationResult(True,verify,schema,core.trust.mode,core.trust.authenticity,"","verified consistency" if verify else "structure inspected")
-
 def _public(data,verify):
  try:return _pipeline(data,verify)
  except ProofVerificationError as error:return VerificationResult(False,False,"","","",error.code,error.message)
