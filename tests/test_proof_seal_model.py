@@ -5,8 +5,7 @@ class ProofSealModelTests(unittest.TestCase):
  def test_minimal_and_rich_models(self):
   self.assertEqual((),minimal_core().analysis.call_sites);self.assertEqual("unsigned",minimal_core().trust.mode)
   core=rich_core();self.assertEqual(("Здоровье","ПДн"),core.analysis.call_sites[0].incoming_labels);self.assertEqual(1,len(core.analysis.assumptions))
- def test_factories_canonicalize_permutations(self):
-  self.assertEqual(canonical_bytes(rich_core(False)),canonical_bytes(rich_core(True)))
+ def test_factories_canonicalize_permutations(self):self.assertEqual(canonical_bytes(rich_core(False)),canonical_bytes(rich_core(True)))
  def test_frozen(self):
   with self.assertRaises(dataclasses.FrozenInstanceError):minimal_core().trust.mode="signed"
  def test_visible_versions(self):
@@ -15,6 +14,10 @@ class ProofSealModelTests(unittest.TestCase):
   self.assertEqual("src/x.яд",SourceSpan("src/x.яд",0,3,1).module_path)
   for path in ("/x","C:/x","../x","a//b","a\\b","./x"):
    with self.subTest(path=path),self.assertRaises(ProofSealError):SourceSpan(path,0,0,0)
+ def test_safe_integer_boundaries(self):
+  for value in (0,1,MAX_SAFE_INTEGER-1,MAX_SAFE_INTEGER):
+   with self.subTest(value=value):self.assertEqual(value,SourceSpan("x",value,value,value).ordinal)
+  data=canonical_bytes(ProofSealCore(minimal_core().compiler,minimal_core().subject,make_analysis(fixpoint=FixpointEvidence("bounded-monotone-1.0",(),MAX_SAFE_INTEGER,MAX_SAFE_INTEGER))));self.assertIn(str(MAX_SAFE_INTEGER).encode(),data);self.assertNotIn(b"e+",data.lower())
  def test_hash_validation(self):
   for value in ("A"*64,"0"*63,"g"*64):
    with self.subTest(value=value),self.assertRaises(ProofSealError):SubjectBinding(POLICY_VERSION,LLVM_NORMALIZATION_VERSION,value,ZERO,ZERO,ZERO,"x","elf-object")
