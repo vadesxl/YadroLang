@@ -132,6 +132,7 @@ class ProofSealCore:
  def __post_init__(self):
   if self.schema!=SCHEMA:raise ProofSealError("unsupported proof schema")
   if not isinstance(self.trust,TrustState) or not isinstance(self.compiler,CompilerIdentity) or not isinstance(self.subject,SubjectBinding) or not isinstance(self.analysis,AnalysisEvidence):raise ProofSealError("invalid proof core types")
+  if any(call.frontend!=self.compiler.frontend for call in self.analysis.call_sites):raise ProofSealError("call-site frontend does not match compiler frontend")
 @dataclass(frozen=True,slots=True)
 class ProofSeal:
  core:ProofSealCore;seal_sha256:str
