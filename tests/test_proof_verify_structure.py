@@ -1,5 +1,5 @@
 import unittest
-from src.proof_seal import MAX_SAFE_INTEGER
+from src.proof_seal import MAX_SAFE_INTEGER,call_site_id
 from src.proof_seal_verify import *
 from tests.proof_verify_fixtures import parsed,encoded
 class ProofVerifyStructureTests(unittest.TestCase):
@@ -9,7 +9,7 @@ class ProofVerifyStructureTests(unittest.TestCase):
  def test_bool_integer_confusion(self):
   value=parsed();value["analysis"]["fixpoint"]["updates"]=True;self.assertEqual(ProofValueError.code,inspect_bytes(encoded(value)).diagnostic_code)
  def test_safe_integer_cross_layer(self):
-  value=parsed();value["analysis"]["call_sites"][0]["span"].update({"start_byte":MAX_SAFE_INTEGER,"end_byte":MAX_SAFE_INTEGER,"ordinal":MAX_SAFE_INTEGER});value["analysis"]["fixpoint"].update({"updates":MAX_SAFE_INTEGER,"bound":MAX_SAFE_INTEGER});self.assertTrue(inspect_bytes(encoded(value)).valid)
+  value=parsed();call=value["analysis"]["call_sites"][0];call["span"].update({"start_byte":MAX_SAFE_INTEGER,"end_byte":MAX_SAFE_INTEGER,"ordinal":MAX_SAFE_INTEGER});span=call["span"];call["id"]=call_site_id(value["compiler"]["frontend"],call["module_id"],call["caller"],call["callee"],call["semantic_kind"],span["start_byte"],span["end_byte"],span["ordinal"]);value["analysis"]["fixpoint"].update({"updates":MAX_SAFE_INTEGER,"bound":MAX_SAFE_INTEGER});self.assertTrue(inspect_bytes(encoded(value)).valid)
   for invalid in (MAX_SAFE_INTEGER+1,9_999_999_999_999_999,18_446_744_073_709_551_615,-1,False,1.0):
    with self.subTest(value=invalid):
     value=parsed();value["analysis"]["fixpoint"]["updates"]=invalid;self.assertEqual(ProofValueError.code,inspect_bytes(encoded(value)).diagnostic_code)
