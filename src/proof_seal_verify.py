@@ -2,7 +2,7 @@
 """Phase 2: bounded, strict, offline verification of Yadro Proof Seal bytes."""
 from dataclasses import dataclass
 import hmac,json,unicodedata
-from src.proof_seal import (MAX_SEAL_BYTES,MAX_CALL_SITES,MAX_ENTRY_POINTS,MAX_ASSUMPTIONS,MAX_SEMANTIC_SET,MAX_IDENTIFIER_BYTES,SCHEMA,POLICY_VERSION,LLVM_NORMALIZATION_VERSION,ProofSealError,TrustState,CompilerIdentity,SourceSpan,CallSiteEvidence,FixpointEvidence,AnalysisEvidence,SubjectBinding,ProofSealCore,ProofSeal,make_assumption,canonical_bytes,seal)
+from src.proof_seal import (MAX_SEAL_BYTES,MAX_CALL_SITES,MAX_ENTRY_POINTS,MAX_ASSUMPTIONS,MAX_SEMANTIC_SET,MAX_IDENTIFIER_BYTES,MAX_SAFE_INTEGER,SCHEMA,POLICY_VERSION,LLVM_NORMALIZATION_VERSION,ProofSealError,TrustState,CompilerIdentity,SourceSpan,CallSiteEvidence,FixpointEvidence,AnalysisEvidence,SubjectBinding,ProofSealCore,ProofSeal,make_assumption,canonical_bytes,seal)
 MAX_DEPTH=16
 class ProofVerificationError(ValueError):
  code="ЯДРО-П0000"
@@ -57,15 +57,19 @@ def _pairs(pairs):
  return result
 
 def _json_integer(text):
- if len(text.lstrip("-"))>20:raise ProofValueError("JSON integer exceeds digit limit")
- return int(text)
+ digits=text.lstrip("-")
+ if len(digits)>16:raise ProofValueError("JSON integer exceeds safe range")
+ try:value=int(text)
+ except ValueError as error:raise ProofValueError("invalid JSON integer") from error
+ if not 0<=value<=MAX_SAFE_INTEGER:raise ProofValueError("JSON integer exceeds safe range")
+ return value
 def _no_float(_):raise ProofValueError("floating-point JSON values are forbidden")
 
 def _parse(data):
  text=_decode(data);_scan_depth(text)
  try:return json.loads(text,object_pairs_hook=_pairs,parse_int=_json_integer,parse_float=_no_float,parse_constant=_no_float)
  except ProofVerificationError:raise
- except json.JSONDecodeError as error:raise ProofSyntaxError("invalid JSON syntax") from error
+ except (json.JSONDecodeError,ValueError) as error:raise ProofSyntaxError("invalid JSON syntax") from error
 
 def _nfc(value,name,max_bytes=MAX_IDENTIFIER_BYTES,empty=False):
  if not isinstance(value,str):raise ProofValueError(f"{name} must be a string")
@@ -81,7 +85,7 @@ def _obj(value,required,name):
  return value
 
 def _integer(value,name,minimum=0):
- if not isinstance(value,int) or isinstance(value,bool) or value<minimum:raise ProofValueError(f"{name} must be an integer >= {minimum}")
+ if not isinstance(value,int) or isinstance(value,bool) or not minimum<=value<=MAX_SAFE_INTEGER:raise ProofValueError(f"{name} must be an integer in {minimum}..{MAX_SAFE_INTEGER}")
  return value
 def _boolean(value,name):
  if not isinstance(value,bool):raise ProofValueError(f"{name} must be boolean")
@@ -122,6 +126,7 @@ def _subject(value):
  except ProofSealError as error:raise ProofValueError("invalid subject binding") from error
 def _span(value):
  value=_obj(value,("module_path","start_byte","end_byte","ordinal"),"span")
+ _integer(value["start_byte"],"start_byte");_integer(value["end_byte"],"end_byte");_integer(value["ordinal"],"ordinal")
  try:return SourceSpan(value["module_path"],value["start_byte"],value["end_byte"],value["ordinal"])
  except ProofSealError as error:raise ProofValueError("invalid source span") from error
 
