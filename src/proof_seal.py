@@ -52,6 +52,14 @@ def _canonical_mapping(mapping):
  return data
 def _assumption_payload(symbol,abi_signature,capability,taint_transform,trusted_sanitizer,lifetime,no_retain,implementation_sha256):return {"abi_signature":abi_signature,"capability":capability,"implementation_sha256":implementation_sha256,"lifetime":lifetime,"no_retain":no_retain,"symbol":symbol,"taint_transform":taint_transform,"trusted_sanitizer":trusted_sanitizer}
 def _assumption_digest_fields(**payload):return hashlib.sha256(b"YADRO-ASSUMPTION\0"+_canonical_mapping(payload)).hexdigest()
+def module_id(frontend,source_bytes):
+ frontend=_enum(frontend,"frontend",{"ru","en"})
+ if not isinstance(source_bytes,bytes):raise ProofSealError("source must be bytes")
+ return hashlib.sha256(b"YADRO-MODULE\0"+frontend.encode()+b"\0"+source_bytes).hexdigest()
+def call_site_id(frontend,module_digest,caller,callee,semantic_kind,start_byte,end_byte,ordinal):
+ frontend=_enum(frontend,"frontend",{"ru","en"});_digest(module_digest,"module id");caller=_text(caller,"caller");callee=_text(callee,"callee");semantic_kind=_enum(semantic_kind,"semantic kind",{"call"});start=_integer(start_byte,"start_byte");end=_integer(end_byte,"end_byte");order=_integer(ordinal,"ordinal")
+ if end<start:raise ProofSealError("end_byte precedes start_byte")
+ return hashlib.sha256(b"YADRO-CALL-SITE\0"+b"\0".join(x.encode() for x in (frontend,module_digest,caller,callee,semantic_kind,str(start),str(end),str(order)))).hexdigest()
 @dataclass(frozen=True,slots=True)
 class TrustState:
  mode:str="unsigned";authenticity:str="not-provided"
@@ -83,10 +91,12 @@ class ExternalAssumption:
   if self.id!=expected:raise ProofSealError("assumption id does not match content")
 @dataclass(frozen=True,slots=True)
 class CallSiteEvidence:
- id:str;caller:str;callee:str;span:SourceSpan;required_capabilities:tuple[str,...];declared_capabilities:tuple[str,...];incoming_labels:tuple[str,...];outgoing_labels:tuple[str,...];sanitizers:tuple[str,...];declassified_labels:tuple[str,...];policy_rules:tuple[str,...];implicit_labels:tuple[str,...];assumption_ids:tuple[str,...];reachable_entries:tuple[str,...];status:str="allowed"
+ id:str;frontend:str;module_id:str;semantic_kind:str;caller:str;callee:str;span:SourceSpan;required_capabilities:tuple[str,...];declared_capabilities:tuple[str,...];incoming_labels:tuple[str,...];outgoing_labels:tuple[str,...];sanitizers:tuple[str,...];declassified_labels:tuple[str,...];policy_rules:tuple[str,...];implicit_labels:tuple[str,...];assumption_ids:tuple[str,...];reachable_entries:tuple[str,...];status:str="allowed"
  def __post_init__(self):
-  _digest(self.id,"call-site id");_text(self.caller,"caller");_text(self.callee,"callee")
+  _digest(self.id,"call-site id");_enum(self.frontend,"frontend",{"ru","en"});_digest(self.module_id,"module id");_enum(self.semantic_kind,"semantic kind",{"call"});_text(self.caller,"caller");_text(self.callee,"callee")
   if not isinstance(self.span,SourceSpan):raise ProofSealError("span must be SourceSpan")
+  expected=call_site_id(self.frontend,self.module_id,self.caller,self.callee,self.semantic_kind,self.span.start_byte,self.span.end_byte,self.span.ordinal)
+  if self.id!=expected:raise ProofSealError("call-site id does not match content")
   for name in ("required_capabilities","declared_capabilities","incoming_labels","outgoing_labels","sanitizers","declassified_labels","policy_rules","implicit_labels","reachable_entries"):_require_canonical_strings(getattr(self,name),name,MAX_ENTRY_POINTS if name=="reachable_entries" else MAX_SEMANTIC_SET)
   _require_digests(self.assumption_ids,"assumption_ids")
   if self.status!="allowed":raise ProofSealError("successful evidence status must be allowed")
@@ -137,6 +147,7 @@ def _require_digests(value,name):
  if len(set(value))!=len(value) or tuple(sorted(value))!=value:raise ProofSealError(f"{name} must be unique and sorted")
 def _plain(value):
  if isinstance(value,tuple):return [_plain(x) for x in value]
+ if isinstance(value,CallSiteEvidence):return {field.name:_plain(getattr(value,field.name)) for field in fields(value) if field.name!="frontend"}
  if hasattr(value,"__dataclass_fields__"):return {field.name:_plain(getattr(value,field.name)) for field in fields(value)}
  if value is None or isinstance(value,(str,bool,int)):return value
  raise ProofSealError(f"unsupported canonical value: {type(value).__name__}")
@@ -146,26 +157,20 @@ def make_assumption(symbol,abi_signature,capability,taint_transform,trusted_sani
  payload=_assumption_payload(_text(symbol,"symbol"),_text(abi_signature,"ABI signature",512),None if capability is None else _text(capability,"capability"),_text(taint_transform,"taint transform",512),trusted_sanitizer,_text(lifetime,"lifetime",512),no_retain,None if implementation_sha256 is None else _digest(implementation_sha256,"implementation digest"))
  if not isinstance(trusted_sanitizer,bool) or not isinstance(no_retain,bool):raise ProofSealError("assumption flags must be bool")
  return ExternalAssumption(_assumption_digest_fields(**payload),**payload)
-def make_call_site(id,caller,callee,span,**sets):
+def make_call_site(frontend,module_digest,semantic_kind,caller,callee,span,**sets):
+ if not isinstance(span,SourceSpan):raise ProofSealError("span must be SourceSpan")
+ identity=call_site_id(frontend,module_digest,caller,callee,semantic_kind,span.start_byte,span.end_byte,span.ordinal)
  names=("required_capabilities","declared_capabilities","incoming_labels","outgoing_labels","sanitizers","declassified_labels","policy_rules","implicit_labels","reachable_entries")
  values={name:canonical_strings(sets.get(name,()),name,MAX_ENTRY_POINTS if name=="reachable_entries" else MAX_SEMANTIC_SET) for name in names};assumption_ids=_tuple(sets.get("assumption_ids",()),"assumption_ids")
  for item in assumption_ids:_digest(item,"assumption id")
  if len(set(assumption_ids))!=len(assumption_ids):raise ProofSealError("duplicate assumption id")
- values["assumption_ids"]=tuple(sorted(assumption_ids));return CallSiteEvidence(id,caller,callee,span,**values)
+ values["assumption_ids"]=tuple(sorted(assumption_ids));return CallSiteEvidence(identity,frontend,module_digest,semantic_kind,caller,callee,span,**values)
 def make_analysis(entry_points=(),call_sites=(),assumptions=(),fixpoint=None):
  calls=_tuple(call_sites,"call_sites");assumps=_tuple(assumptions,"assumptions")
  if not all(isinstance(x,CallSiteEvidence) for x in calls):raise ProofSealError("call_sites must contain CallSiteEvidence")
  if not all(isinstance(x,ExternalAssumption) for x in assumps):raise ProofSealError("assumptions must contain ExternalAssumption")
  if len({x.id for x in calls})!=len(calls) or len({x.id for x in assumps})!=len(assumps):raise ProofSealError("duplicate evidence id")
  return AnalysisEvidence(canonical_strings(entry_points,"entry_points",MAX_ENTRY_POINTS),tuple(sorted(calls,key=lambda x:x.id)),tuple(sorted(assumps,key=lambda x:x.id)),fixpoint or FixpointEvidence("bounded-monotone-1.0",(),0,1))
-def module_id(frontend,source_bytes):
- frontend=_enum(frontend,"frontend",{"ru","en"})
- if not isinstance(source_bytes,bytes):raise ProofSealError("source must be bytes")
- return hashlib.sha256(b"YADRO-MODULE\0"+frontend.encode()+b"\0"+source_bytes).hexdigest()
-def call_site_id(frontend,module_digest,caller,callee,ast_kind,start_byte,end_byte,ordinal):
- frontend=_enum(frontend,"frontend",{"ru","en"});_digest(module_digest,"module id");caller=_text(caller,"caller");callee=_text(callee,"callee");ast_kind=_text(ast_kind,"AST kind");start=_integer(start_byte,"start_byte");end=_integer(end_byte,"end_byte");order=_integer(ordinal,"ordinal")
- if end<start:raise ProofSealError("end_byte precedes start_byte")
- return hashlib.sha256(b"YADRO-CALL-SITE\0"+b"\0".join(x.encode() for x in (frontend,module_digest,caller,callee,ast_kind,str(start),str(end),str(order)))).hexdigest()
 def canonical_bytes(value):
  if isinstance(value,ProofSealCore):return _canonical_mapping(_core_mapping(value))
  if isinstance(value,ProofSeal):
