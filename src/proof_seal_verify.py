@@ -43,7 +43,7 @@ def _scan_depth(text):
   elif ch in "{[":
    depth+=1
    if depth>MAX_DEPTH:raise ProofDepthError("JSON nesting exceeds limit")
-  elif ch in "}]":
+  elif ch in "]}":
    depth-=1
    if depth<0:raise ProofSyntaxError("unbalanced JSON container")
  if in_string:raise ProofDepthError("unterminated JSON string")
@@ -74,8 +74,11 @@ def _parse(data):
 def _nfc(value,name,max_bytes=MAX_IDENTIFIER_BYTES,empty=False):
  if not isinstance(value,str):raise ProofValueError(f"{name} must be a string")
  if not empty and not value:raise ProofValueError(f"{name} must not be empty")
+ if any(0xD800<=ord(ch)<=0xDFFF for ch in value):raise ProofValueError(f"{name} contains invalid Unicode scalar value")
  if unicodedata.normalize("NFC",value)!=value:raise ProofValueError(f"{name} must be NFC")
- if len(value.encode("utf-8"))>max_bytes:raise ProofValueError(f"{name} exceeds byte limit")
+ try:encoded=value.encode("utf-8")
+ except UnicodeEncodeError as error:raise ProofValueError(f"{name} contains invalid Unicode scalar value") from error
+ if len(encoded)>max_bytes:raise ProofValueError(f"{name} exceeds byte limit")
  if "\x00" in value or any(ord(ch)<32 or ord(ch)==127 for ch in value):raise ProofValueError(f"{name} contains forbidden character")
  return value
 
