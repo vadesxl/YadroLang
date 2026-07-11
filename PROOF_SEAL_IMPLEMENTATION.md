@@ -1,20 +1,21 @@
 # Печать Ядра: implementation map
 
-Статус: план после принятия [нормативного дизайна](PROOF_SEAL.md). Этот файл не объявляет команды реализованными.
+Статус: план после принятия [нормативного дизайна](PROOF_SEAL.md). Команды не реализованы.
 
-## Existing evidence inventory
+## Existing inventory
 
-- `src/этика_v21.py`: bounded interprocedural return/leak summaries, PC labels, sanitizer audit entries and mandate checks. Current `ЗаписьАудита` is human/audit oriented and insufficient as proof schema.
-- `src/guard_impl.py`: invocation-local custom policy application, JSON/SARIF diagnostics and exit classes. Current policy mutation is process-global during invocation and must not be read directly by proof serializer.
-- `src/mcp_guard_v2.py`: bounded deterministic tool graph, sorted findings, roots and fixpoint update count. Its summary can feed a separate typed MCP evidence adapter.
-- `src/кодоген_verified.py`: verified LLVM text and stable ABI symbols.
-- `src/main.py`: native emission and platform-specific COFF path. Proof finalization belongs after successful object write, not inside CodeGen.
+- `src/этика_v21.py`: bounded summaries, PC labels, sanitizer audit and mandates; current audit record is insufficient as proof schema.
+- `src/guard_impl.py`: invocation policy, JSON/SARIF and exit classes; mutable runtime policy must be replaced by immutable snapshot for evidence.
+- `src/mcp_guard_v2.py`: bounded deterministic graph, roots and fixpoint updates.
+- `src/кодоген_verified.py`: verified LLVM and stable ABI symbols.
+- `src/main.py`: native emission; proof finalization belongs after successful object write.
 
-## Required internal types
+## Phase 1 internal types
 
-Create frozen immutable values in a new module, names subject to review:
+Future module uses frozen values:
 
 ```text
+EffectivePolicySnapshot
 AnalysisEvidence
 CallSiteEvidence
 ExternalAssumption
@@ -23,87 +24,65 @@ SubjectBinding
 ProofSealCore
 ```
 
-Fields use tuples, not mutable sets/lists. Constructors validate NFC, lengths, uniqueness and sorted canonical order. Serializer accepts only these values, never arbitrary dicts and never human audit strings.
+Fields use tuples. Constructors validate NFC, byte lengths, uniqueness and canonical ordering. Serializer accepts these types only, never arbitrary dicts or audit strings.
 
-## Ethical Checker changes
+## Version dispatch
 
-A future phase must:
+Strict verifier begins with bounded duplicate-rejecting JSON preflight that extracts only schema/policy/LLVM version tuple. It then dispatches exact strict validator. Do not validate unknown versions with v1 schema, and do not canonicalize policy/LLVM before support decision.
 
-1. retain caller function while traversing every effectful call;
-2. compute reachable entry points over bounded call graph;
-3. record source/callee/sink label state before and after sanitizer;
-4. record mandate requirement and declaration;
-5. expose fixpoint updates and bound;
-6. emit assumptions for every external policy symbol;
-7. return `(audit_trail, analysis_evidence)` without module-global evidence state.
+## Ethical Checker work
 
-Existing diagnostics remain authoritative for rejection. Evidence is created only after successful full check.
+Future changes retain caller context, bounded reachability from entries, before/after label states, mandate evidence, fixpoint metadata and assumptions. Return immutable evidence only after successful full check. Existing diagnostics stay authoritative.
 
 ## Policy snapshot
 
-Before analysis, build immutable effective policy snapshot from built-ins plus validated invocation-local additions. Hash canonical snapshot. Ethical Checker, semantic arity checks and evidence builder must consume the same snapshot object. This removes proof dependence on resettable module globals and prevents time-of-check/time-of-serialize drift.
+Build one immutable effective policy from built-ins plus invocation entries. Semantic arity, Ethical Checker and evidence consume the same snapshot. Hash its versioned canonical bytes. Never serialize resettable module globals.
 
 ## Source spans
 
-Current AST mostly stores line numbers. Stable IDs require lexer/parser to retain UTF-8 byte start/end spans. Span work is a prerequisite and separate reviewed change. Until spans exist, Proof Seal must not fake stable identity from line number.
+AST currently mostly stores lines. Stable IDs require UTF-8 byte start/end spans from lexer/parser. This is prerequisite work. Until then, implementation must not fake stable IDs from line numbers.
 
-## LLVM normalization
+## Canonical serializer
 
-Normalization adapter:
+Implement explicitly, not via default `json.dumps` assumptions:
 
-1. parse generated text with llvmlite;
-2. verify module;
-3. serialize through pinned compatibility version;
-4. normalize CRLF/CR to LF;
-5. require exactly one trailing LF;
-6. hash bytes with domain separation if later versioned contract requires it.
+- type-directed values;
+- exact string escaping golden vectors;
+- NFC rejection;
+- key and array ordering;
+- integer-only numbers;
+- payload self-digest exclusion;
+- domain-separated golden vectors for module, call-site and assumption IDs.
 
-No optimizer run is inserted merely for proof generation.
+## LLVM/native binding
 
-## Native binding and atomic output
+Normalizer parses/verifies and serializes through pinned compatibility. Coordinator emits object, inspects exact format/machine, hashes bytes, finalizes seal and atomically replaces output in trusted parent directory. Proof is absent on failure.
 
-Compiler flow returns verified IR and typed evidence. Native builder writes object first. Coordinator reads exact object bytes, computes digest, finalizes core, writes seal temp file in destination directory and atomically replaces regular non-symlink destination. Proof is absent on any failure.
+Avoid generic callbacks between emission and hashing.
 
-Avoid exposing a generic callback between object emission and hashing. It would create a race and unclear trust boundary.
+## Verifier components
 
-## Verifier modules
+- bounded byte reader and nesting-aware duplicate-key parser;
+- minimal version preflight;
+- strict structural and semantic validator independent of optional schema library;
+- NFC, ordering, span and safe-path validator;
+- canonical serializer and digest comparison;
+- ELF/Mach-O/COFF bounded header inspector;
+- deterministic renderer with explicit trust state.
 
-- bounded byte reader;
-- duplicate-key rejecting JSON loader;
-- strict structural validator independent of optional third-party schema package;
-- NFC and semantic path validator;
-- canonical serializer;
-- digest verifier;
-- deterministic renderer.
-
-Verifier performs no import by user path, subprocess, network call or artifact execution.
-
-## CLI phases
-
-1. `proof inspect`: parse and display, explicitly unverified.
-2. `proof verify`: structural and binding verification, explicit unsigned trust result.
-3. `compile --emit-proof`: only after evidence and atomic output are complete.
-4. optional future authenticated envelope verification.
-
-Each phase gets subprocess CLI tests and installed-wheel smoke on Linux, macOS and Windows.
+No user-path imports, subprocess, network or artifact execution.
 
 ## Test modules
 
-- `test_proof_canonical.py`: deterministic bytes, NFC, ordering, self-digest exclusion.
-- `test_proof_parser_adversarial.py`: duplicate keys, depth, sizes, unknown fields, unsafe paths.
+- `test_proof_canonical.py`: exact bytes, NFC, all ordering, self-digest and ID vectors.
+- `test_proof_preflight.py`: duplicate keys, bounds, unknown version tuple and dispatch order.
+- `test_proof_parser_adversarial.py`: depth, sizes, unknown fields, unsafe paths and spans.
 - `test_proof_binding.py`: artifact/policy/target mutation and swaps.
-- `test_proof_evidence.py`: direct, sanitized, implicit and recursive flows, assumptions.
-- `test_proof_native.py`: ELF/Mach-O/COFF compile, link-independent verify, no skip.
-- `test_proof_cli.py`: exit classes, inspect vs verify wording and UTF-8 subprocesses.
+- `test_proof_object.py`: malformed/truncated ELF, Mach-O and COFF plus architecture mismatch.
+- `test_proof_evidence.py`: direct, sanitized, implicit, recursive and assumptions.
+- `test_proof_native.py`: cross-platform object verification without skip.
+- `test_proof_cli.py`: exit classes, inspect wording, JSON trust state and UTF-8 subprocesses.
 
 ## Benchmarks
 
-Extend versioned benchmark output with independent metrics:
-
-- `compile_without_proof`;
-- `compile_with_proof`;
-- `proof_serialize`;
-- `proof_verify`;
-- `proof_bytes` and `call_site_count`.
-
-No threshold before repeated baseline data.
+Measure compile without/with proof, serialization, verification, payload bytes and call-site count. No threshold before repeated baseline.
