@@ -1,88 +1,45 @@
-# Печать Ядра: implementation map
+# Печать Ядра: implementation status
 
-Статус: план после принятия [нормативного дизайна](PROOF_SEAL.md). Команды не реализованы.
+## Phase 1 implemented in stacked PR
 
-## Existing inventory
+- frozen, slotted typed evidence model;
+- canonical factories with duplicate rejection and UTF-8 ordering;
+- NFC/type/hash/bounds/path/span validation;
+- deterministic UTF-8 JSON serialization with one trailing LF;
+- domain-separated module and call-site IDs;
+- content-addressed assumption IDs;
+- unsigned seal self-digest excluding the digest field;
+- model, canonicalization, ID, adversarial and permutation tests;
+- independent `proof_seal_serialize` benchmark metric.
 
-- `src/этика_v21.py`: bounded summaries, PC labels, sanitizer audit and mandates; current audit record is insufficient as proof schema.
-- `src/guard_impl.py`: invocation policy, JSON/SARIF and exit classes; mutable runtime policy must be replaced by immutable snapshot for evidence.
-- `src/mcp_guard_v2.py`: bounded deterministic graph, roots and fixpoint updates.
-- `src/кодоген_verified.py`: verified LLVM and stable ABI symbols.
-- `src/main.py`: native emission; proof finalization belongs after successful object write.
+Phase 1 exposes a library model only. It does not accept untrusted proof files and provides no authenticity.
 
-## Phase 1 internal types
+## Existing integration inventory
 
-Future module uses frozen values:
+- `src/этика_v21.py`: bounded summaries, PC labels, sanitizer audit and mandates. Current audit records are not proof evidence.
+- `src/guard_impl.py`: invocation policy and diagnostics. Mutable runtime policy must become one immutable effective snapshot before evidence integration.
+- `src/mcp_guard_v2.py`: bounded deterministic graph and fixpoint metadata, not yet exported as seal evidence.
+- `src/кодоген_verified.py`: verified LLVM and ABI symbols, not yet normalized or bound.
+- `src/main.py`: native emission, not yet coordinated with proof output.
 
-```text
-EffectivePolicySnapshot
-AnalysisEvidence
-CallSiteEvidence
-ExternalAssumption
-FixpointEvidence
-SubjectBinding
-ProofSealCore
-```
+## Not implemented
 
-Fields use tuples. Constructors validate NFC, byte lengths, uniqueness and canonical ordering. Serializer accepts these types only, never arbitrary dicts or audit strings.
+- bounded untrusted JSON parser and version preflight;
+- structural/offline verifier or CLI commands;
+- Ethical Checker or MCP evidence export;
+- UTF-8 source spans from Lexer/Parser;
+- LLVM normalization runtime;
+- native artifact hash binding and object inspection;
+- atomic proof writer;
+- authenticated DSSE/Sigstore envelope;
+- English counterpart.
 
-## Version dispatch
+## Next phases
 
-Strict verifier begins with bounded duplicate-rejecting JSON preflight that extracts only schema/policy/LLVM version tuple. It then dispatches exact strict validator. Do not validate unknown versions with v1 schema, and do not canonicalize policy/LLVM before support decision.
+1. Bounded duplicate-key parser, version preflight and strict verifier.
+2. Lexer/Parser byte spans and immutable effective policy snapshot.
+3. Ethical Checker evidence export.
+4. LLVM/object binding, format inspection and atomic output.
+5. Standard authenticated envelope and English parity.
 
-## Ethical Checker work
-
-Future changes retain caller context, bounded reachability from entries, before/after label states, mandate evidence, fixpoint metadata and assumptions. Return immutable evidence only after successful full check. Existing diagnostics stay authoritative.
-
-## Policy snapshot
-
-Build one immutable effective policy from built-ins plus invocation entries. Semantic arity, Ethical Checker and evidence consume the same snapshot. Hash its versioned canonical bytes. Never serialize resettable module globals.
-
-## Source spans
-
-AST currently mostly stores lines. Stable IDs require UTF-8 byte start/end spans from lexer/parser. This is prerequisite work. Until then, implementation must not fake stable IDs from line numbers.
-
-## Canonical serializer
-
-Implement explicitly, not via default `json.dumps` assumptions:
-
-- type-directed values;
-- exact string escaping golden vectors;
-- NFC rejection;
-- key and array ordering;
-- integer-only numbers;
-- payload self-digest exclusion;
-- domain-separated golden vectors for module, call-site and assumption IDs.
-
-## LLVM/native binding
-
-Normalizer parses/verifies and serializes through pinned compatibility. Coordinator emits object, inspects exact format/machine, hashes bytes, finalizes seal and atomically replaces output in trusted parent directory. Proof is absent on failure.
-
-Avoid generic callbacks between emission and hashing.
-
-## Verifier components
-
-- bounded byte reader and nesting-aware duplicate-key parser;
-- minimal version preflight;
-- strict structural and semantic validator independent of optional schema library;
-- NFC, ordering, span and safe-path validator;
-- canonical serializer and digest comparison;
-- ELF/Mach-O/COFF bounded header inspector;
-- deterministic renderer with explicit trust state.
-
-No user-path imports, subprocess, network or artifact execution.
-
-## Test modules
-
-- `test_proof_canonical.py`: exact bytes, NFC, all ordering, self-digest and ID vectors.
-- `test_proof_preflight.py`: duplicate keys, bounds, unknown version tuple and dispatch order.
-- `test_proof_parser_adversarial.py`: depth, sizes, unknown fields, unsafe paths and spans.
-- `test_proof_binding.py`: artifact/policy/target mutation and swaps.
-- `test_proof_object.py`: malformed/truncated ELF, Mach-O and COFF plus architecture mismatch.
-- `test_proof_evidence.py`: direct, sanitized, implicit, recursive and assumptions.
-- `test_proof_native.py`: cross-platform object verification without skip.
-- `test_proof_cli.py`: exit classes, inspect wording, JSON trust state and UTF-8 subprocesses.
-
-## Benchmarks
-
-Measure compile without/with proof, serialization, verification, payload bytes and call-site count. No threshold before repeated baseline.
+Each phase remains a separate reviewed PR. Phase 1 is not production-ready and does not implement commands shown in `PROOF_SEAL.md`.
