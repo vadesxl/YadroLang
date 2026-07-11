@@ -1,0 +1,27 @@
+import dataclasses,unittest
+from src.proof_seal import *
+from tests.proof_seal_fixtures import minimal_core,rich_core,ZERO
+class ProofSealModelTests(unittest.TestCase):
+ def test_minimal_and_rich_models(self):
+  self.assertEqual((),minimal_core().analysis.call_sites);self.assertEqual("unsigned",minimal_core().trust.mode)
+  core=rich_core();self.assertEqual(("Здоровье","ПДн"),core.analysis.call_sites[0].incoming_labels);self.assertEqual(1,len(core.analysis.assumptions))
+ def test_factories_canonicalize_permutations(self):self.assertEqual(canonical_bytes(rich_core(False)),canonical_bytes(rich_core(True)))
+ def test_frozen(self):
+  with self.assertRaises(dataclasses.FrozenInstanceError):minimal_core().trust.mode="signed"
+ def test_visible_versions(self):
+  subject=minimal_core().subject;self.assertEqual(POLICY_VERSION,subject.policy_schema_version);self.assertEqual(LLVM_NORMALIZATION_VERSION,subject.llvm_normalization_version)
+ def test_span_and_path(self):
+  self.assertEqual("src/x.яд",SourceSpan("src/x.яд",0,3,1).module_path)
+  for path in ("/x","C:/x","../x","a//b","a\\b","./x"):
+   with self.subTest(path=path),self.assertRaises(ProofSealError):SourceSpan(path,0,0,0)
+ def test_safe_integer_boundaries(self):
+  for value in (0,1,MAX_SAFE_INTEGER-1,MAX_SAFE_INTEGER):
+   with self.subTest(value=value):self.assertEqual(value,SourceSpan("x",value,value,value).ordinal)
+  data=canonical_bytes(ProofSealCore(minimal_core().compiler,minimal_core().subject,make_analysis(fixpoint=FixpointEvidence("bounded-monotone-1.0",(),MAX_SAFE_INTEGER,MAX_SAFE_INTEGER))));self.assertIn(str(MAX_SAFE_INTEGER).encode(),data);self.assertNotIn(b"e+",data.lower())
+ def test_call_frontend_must_match_compiler_context(self):
+  span=SourceSpan("x",0,1,0);call=make_call_site("ru",module_id("ru",b"x"),"call","a","b",span);analysis=make_analysis(call_sites=(call,));compiler=CompilerIdentity("yadro-guard","2.1.0","en","1.0")
+  with self.assertRaisesRegex(ProofSealError,"frontend does not match"):ProofSealCore(compiler,minimal_core().subject,analysis)
+ def test_hash_validation(self):
+  for value in ("A"*64,"0"*63,"g"*64):
+   with self.subTest(value=value),self.assertRaises(ProofSealError):SubjectBinding(POLICY_VERSION,LLVM_NORMALIZATION_VERSION,value,ZERO,ZERO,ZERO,"x","elf-object")
+if __name__=="__main__":unittest.main()
