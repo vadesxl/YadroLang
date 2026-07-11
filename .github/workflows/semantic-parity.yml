@@ -4,6 +4,7 @@ on:
     paths:
       - spec/semantic_surface.json
       - tools/check_parity.py
+      - tools/check_validator_identity.py
       - tests/test_semantic_parity.py
       - tests/test_semantic_workflow.py
       - SEMANTIC_PARITY.md
@@ -13,6 +14,7 @@ on:
     paths:
       - spec/semantic_surface.json
       - tools/check_parity.py
+      - tools/check_validator_identity.py
       - tests/test_semantic_parity.py
       - tests/test_semantic_workflow.py
       - SEMANTIC_PARITY.md
