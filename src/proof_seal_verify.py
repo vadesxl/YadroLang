@@ -2,7 +2,7 @@
 """Phase 2: bounded, strict, offline verification of Yadro Proof Seal bytes."""
 from dataclasses import dataclass
 import hmac,json,unicodedata
-from src.proof_seal import (MAX_SEAL_BYTES,MAX_CALL_SITES,MAX_ENTRY_POINTS,MAX_ASSUMPTIONS,MAX_SEMANTIC_SET,MAX_IDENTIFIER_BYTES,MAX_SAFE_INTEGER,SCHEMA,POLICY_VERSION,LLVM_NORMALIZATION_VERSION,ProofSealError,TrustState,CompilerIdentity,SourceSpan,CallSiteEvidence,FixpointEvidence,AnalysisEvidence,SubjectBinding,ProofSealCore,ProofSeal,make_assumption,canonical_bytes,seal)
+from src.proof_seal import (MAX_SEAL_BYTES,MAX_CALL_SITES,MAX_ENTRY_POINTS,MAX_ASSUMPTIONS,MAX_SEMANTIC_SET,MAX_IDENTIFIER_BYTES,MAX_PATH_BYTES,MAX_SAFE_INTEGER,SCHEMA,POLICY_VERSION,LLVM_NORMALIZATION_VERSION,ProofSealError,TrustState,CompilerIdentity,SourceSpan,CallSiteEvidence,FixpointEvidence,AnalysisEvidence,SubjectBinding,ProofSealCore,ProofSeal,make_assumption,canonical_bytes,seal)
 MAX_DEPTH=16
 class ProofVerificationError(ValueError):
  code="ЯДРО-П0000"
@@ -129,7 +129,7 @@ def _subject(value):
  except ProofSealError as error:raise ProofValueError("invalid subject binding") from error
 def _span(value):
  value=_obj(value,("module_path","start_byte","end_byte","ordinal"),"span")
- _integer(value["start_byte"],"start_byte");_integer(value["end_byte"],"end_byte");_integer(value["ordinal"],"ordinal")
+ _nfc(value["module_path"],"module_path",MAX_PATH_BYTES);_integer(value["start_byte"],"start_byte");_integer(value["end_byte"],"end_byte");_integer(value["ordinal"],"ordinal")
  try:return SourceSpan(value["module_path"],value["start_byte"],value["end_byte"],value["ordinal"])
  except ProofSealError as error:raise ProofValueError("invalid source span") from error
 
@@ -186,5 +186,6 @@ def _pipeline(data,verify):
 def _public(data,verify):
  try:return _pipeline(data,verify)
  except ProofVerificationError as error:return VerificationResult(False,False,"","","",error.code,error.message)
+ except UnicodeError:return VerificationResult(False,False,"","","",ProofValueError.code,"proof contains invalid Unicode scalar value")
 def inspect_bytes(data):return _public(data,False)
 def verify_bytes(data):return _public(data,True)
