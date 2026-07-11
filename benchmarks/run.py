@@ -5,7 +5,7 @@ from src.лексер import Лексер
 from src.синтаксис import Парсер
 from src.этика import ЭтическийАнализатор
 from src.mcp_guard import run as run_mcp
-from src.proof_seal import CompilerIdentity,SubjectBinding,ProofSealCore,SourceSpan,FixpointEvidence,POLICY_VERSION,LLVM_NORMALIZATION_VERSION,make_assumption,make_call_site,make_analysis,module_id,call_site_id,seal,canonical_bytes
+from src.proof_seal import CompilerIdentity,SubjectBinding,ProofSealCore,SourceSpan,FixpointEvidence,POLICY_VERSION,LLVM_NORMALIZATION_VERSION,make_assumption,make_call_site,make_analysis,module_id,seal,canonical_bytes
 from src.proof_seal_verify import inspect_bytes,verify_bytes
 ИСТОЧНИК='''функ помощь(х) { если х > 2 { вернуть х * 2 } иначе { вернуть х + 1 } } функ старт() { пусть н = 7 пока н < 9 { н = н + 1 } вернуть помощь(н) }'''
 ЭТИКА='''функ помощь(х) { вернуть х + 1 } функ старт() { пусть п = пользователь.данные() пусть ч = анонимизировать(п) вернуть помощь(ч) }'''
@@ -20,11 +20,10 @@ def mcp():
  path=Path(tempfile.gettempdir())/'yadro-benchmark-mcp-ru.json';path.write_text(json.dumps(MCP,ensure_ascii=False));run_mcp(['scan',str(path)],io.StringIO(),io.StringIO())
 ZERO="0"*64
 assumptions=tuple(make_assumption(f"ext{i}","i64(i64)","ДоступСети","identity",False,"call",True) for i in range(8))
-module=module_id("ru",b"benchmark-source")
-calls=[]
+module=module_id("ru",b"benchmark-source");calls=[]
 for index in range(32):
- assumption=assumptions[index%len(assumptions)];cid=call_site_id("ru",module,"caller",f"callee{index}","Вызов",index,index+1,index)
- calls.append(make_call_site(cid,"caller",f"callee{index}",SourceSpan("benchmark/input.яд",index,index+1,index),required_capabilities=("ДоступСети",),incoming_labels=("ПДн",),assumption_ids=(assumption.id,),reachable_entries=("entry",)))
+ assumption=assumptions[index%len(assumptions)];span=SourceSpan("benchmark/input.яд",index,index+1,index)
+ calls.append(make_call_site("ru",module,"call","caller",f"callee{index}",span,required_capabilities=("ДоступСети",),incoming_labels=("ПДн",),assumption_ids=(assumption.id,),reachable_entries=("entry",)))
 analysis=make_analysis(("entry",),calls,assumptions,FixpointEvidence("bounded-monotone-1.0",("ПДн",),8,64))
 core=ProofSealCore(CompilerIdentity("yadro-guard","2.1.0","ru","1.0"),SubjectBinding(POLICY_VERSION,LLVM_NORMALIZATION_VERSION,ZERO,ZERO,ZERO,ZERO,"x86_64-unknown-linux-gnu","elf-object"),analysis)
 PROOF=canonical_bytes(seal(core));META={"payload_bytes":len(PROOF),"call_site_count":len(calls),"assumption_count":len(assumptions)}
