@@ -1,4 +1,4 @@
-import unicodedata,unittest
+import dataclasses,unittest
 from src.proof_seal import *
 from tests.proof_seal_fixtures import minimal_core,ZERO
 class ProofSealAdversarialTests(unittest.TestCase):
@@ -16,12 +16,19 @@ class ProofSealAdversarialTests(unittest.TestCase):
   with self.assertRaises(ProofSealError):canonical_strings(("a","a"),"labels")
   assumption=make_assumption("sym","i64()",None,"identity",False,"call",False)
   with self.assertRaises(ProofSealError):make_analysis(assumptions=(assumption,assumption))
+ def test_forged_content_ids_fail(self):
+  assumption=make_assumption("sym","i64()",None,"identity",False,"call",False)
+  with self.assertRaises(ProofSealError):ExternalAssumption(ZERO,assumption.symbol,assumption.abi_signature,None,"identity",False,"call",False,None)
+  with self.assertRaises(ProofSealError):ProofSeal(minimal_core(),ZERO)
  def test_excessive_sets(self):
   with self.assertRaises(ProofSealError):canonical_strings(tuple(f"x{i}" for i in range(MAX_SEMANTIC_SET+1)),"labels")
- def test_invalid_flags_and_source_type(self):
+ def test_invalid_flags_source_and_serializer(self):
   with self.assertRaises(ProofSealError):make_assumption("s","i64()",None,"identity",1,"call",False)
   with self.assertRaises(ProofSealError):module_id("ru","not bytes")
+  with self.assertRaises(ProofSealError):canonical_bytes({"schema":SCHEMA})
  def test_unsupported_frontend_and_artifact(self):
   with self.assertRaises(ProofSealError):module_id("fr",b"x")
   with self.assertRaises(ProofSealError):SubjectBinding(POLICY_VERSION,LLVM_NORMALIZATION_VERSION,ZERO,ZERO,ZERO,ZERO,"x","pe-exe")
+ def test_frozen(self):
+  with self.assertRaises(dataclasses.FrozenInstanceError):minimal_core().trust.mode="signed"
 if __name__=="__main__":unittest.main()
