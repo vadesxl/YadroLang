@@ -11,30 +11,28 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["mode", "authenticity"],
-      "properties": {
-        "mode": {"const": "unsigned"},
-        "authenticity": {"const": "not-provided"}
-      }
+      "properties": {"mode": {"const": "unsigned"}, "authenticity": {"const": "not-provided"}}
     },
     "compiler": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "version", "frontend", "semantic_surface", "evidence_algorithm", "llvm_normalization", "llvm_compatibility"],
+      "required": ["name", "version", "frontend", "semantic_surface", "evidence_algorithm", "llvm_compatibility"],
       "properties": {
         "name": {"const": "yadro-guard"},
         "version": {"type": "string", "minLength": 1, "maxLength": 64},
         "frontend": {"enum": ["ru", "en"]},
         "semantic_surface": {"type": "string", "minLength": 1, "maxLength": 32},
         "evidence_algorithm": {"const": "yadro-evidence-1.0"},
-        "llvm_normalization": {"const": "yadro-llvm-normalization-1.0"},
         "llvm_compatibility": {"type": "string", "minLength": 1, "maxLength": 64}
       }
     },
     "subject": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["source_sha256", "policy_sha256", "llvm_sha256", "artifact_sha256", "target_triple", "artifact_kind"],
+      "required": ["policy_schema_version", "llvm_normalization_version", "source_sha256", "policy_sha256", "llvm_sha256", "artifact_sha256", "target_triple", "artifact_kind"],
       "properties": {
+        "policy_schema_version": {"const": "yadro-policy-1.0"},
+        "llvm_normalization_version": {"const": "yadro-llvm-normalization-1.0"},
         "source_sha256": {"$ref": "#/$defs/sha256"},
         "policy_sha256": {"$ref": "#/$defs/sha256"},
         "llvm_sha256": {"$ref": "#/$defs/sha256"},
@@ -77,48 +75,35 @@
       "additionalProperties": false,
       "required": ["id", "caller", "callee", "span", "required_capabilities", "declared_capabilities", "incoming_labels", "outgoing_labels", "sanitizers", "declassified_labels", "policy_rules", "implicit_labels", "assumption_ids", "reachable_entries", "status"],
       "properties": {
-        "id": {"$ref": "#/$defs/sha256"},
-        "caller": {"$ref": "#/$defs/name"},
-        "callee": {"$ref": "#/$defs/name"},
-        "span": {"$ref": "#/$defs/span"},
-        "required_capabilities": {"$ref": "#/$defs/smallSet"},
-        "declared_capabilities": {"$ref": "#/$defs/smallSet"},
-        "incoming_labels": {"$ref": "#/$defs/smallSet"},
-        "outgoing_labels": {"$ref": "#/$defs/smallSet"},
-        "sanitizers": {"$ref": "#/$defs/smallSet"},
-        "declassified_labels": {"$ref": "#/$defs/smallSet"},
-        "policy_rules": {"$ref": "#/$defs/smallSet"},
-        "implicit_labels": {"$ref": "#/$defs/smallSet"},
+        "id": {"$ref": "#/$defs/sha256"}, "caller": {"$ref": "#/$defs/name"}, "callee": {"$ref": "#/$defs/name"}, "span": {"$ref": "#/$defs/span"},
+        "required_capabilities": {"$ref": "#/$defs/smallSet"}, "declared_capabilities": {"$ref": "#/$defs/smallSet"},
+        "incoming_labels": {"$ref": "#/$defs/smallSet"}, "outgoing_labels": {"$ref": "#/$defs/smallSet"},
+        "sanitizers": {"$ref": "#/$defs/smallSet"}, "declassified_labels": {"$ref": "#/$defs/smallSet"},
+        "policy_rules": {"$ref": "#/$defs/smallSet"}, "implicit_labels": {"$ref": "#/$defs/smallSet"},
         "assumption_ids": {"$ref": "#/$defs/digestSet"},
         "reachable_entries": {"type": "array", "maxItems": 256, "uniqueItems": true, "items": {"$ref": "#/$defs/name"}},
         "status": {"const": "allowed"}
       }
     },
     "assumption": {
-      "type": "object",
-      "additionalProperties": false,
+      "type": "object", "additionalProperties": false,
       "required": ["id", "symbol", "abi_signature", "capability", "taint_transform", "trusted_sanitizer", "lifetime", "no_retain", "implementation_sha256"],
       "properties": {
-        "id": {"$ref": "#/$defs/sha256"},
-        "symbol": {"$ref": "#/$defs/name"},
+        "id": {"$ref": "#/$defs/sha256"}, "symbol": {"$ref": "#/$defs/name"},
         "abi_signature": {"type": "string", "minLength": 1, "maxLength": 512},
         "capability": {"type": ["string", "null"], "maxLength": 256},
         "taint_transform": {"type": "string", "minLength": 1, "maxLength": 512},
-        "trusted_sanitizer": {"type": "boolean"},
-        "lifetime": {"type": "string", "minLength": 1, "maxLength": 512},
+        "trusted_sanitizer": {"type": "boolean"}, "lifetime": {"type": "string", "minLength": 1, "maxLength": 512},
         "no_retain": {"type": "boolean"},
         "implementation_sha256": {"oneOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]}
       }
     },
     "fixpoint": {
-      "type": "object",
-      "additionalProperties": false,
+      "type": "object", "additionalProperties": false,
       "required": ["algorithm", "lattice_labels", "updates", "bound"],
       "properties": {
-        "algorithm": {"const": "bounded-monotone-1.0"},
-        "lattice_labels": {"$ref": "#/$defs/smallSet"},
-        "updates": {"type": "integer", "minimum": 0},
-        "bound": {"type": "integer", "minimum": 1}
+        "algorithm": {"const": "bounded-monotone-1.0"}, "lattice_labels": {"$ref": "#/$defs/smallSet"},
+        "updates": {"type": "integer", "minimum": 0}, "bound": {"type": "integer", "minimum": 1}
       }
     }
   }
