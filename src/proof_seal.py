@@ -3,7 +3,7 @@
 from dataclasses import dataclass,fields
 import hashlib,json,re,unicodedata
 from typing import Iterable
-MAX_SEAL_BYTES=1_048_576;MAX_CALL_SITES=10_000;MAX_ENTRY_POINTS=256;MAX_ASSUMPTIONS=2_000;MAX_SEMANTIC_SET=32;MAX_IDENTIFIER_BYTES=256;MAX_PATH_BYTES=512
+MAX_SEAL_BYTES=1_048_576;MAX_CALL_SITES=10_000;MAX_ENTRY_POINTS=256;MAX_ASSUMPTIONS=2_000;MAX_SEMANTIC_SET=32;MAX_IDENTIFIER_BYTES=256;MAX_PATH_BYTES=512;MAX_SAFE_INTEGER=9_007_199_254_740_991
 SCHEMA="yadro-proof-seal-1.0";POLICY_VERSION="yadro-policy-1.0";LLVM_NORMALIZATION_VERSION="yadro-llvm-normalization-1.0";_HEX=re.compile(r"^[0-9a-f]{64}$")
 class ProofSealError(ValueError):pass
 def _text(value,name,max_bytes=MAX_IDENTIFIER_BYTES,empty=False):
@@ -15,7 +15,7 @@ def _text(value,name,max_bytes=MAX_IDENTIFIER_BYTES,empty=False):
  if any(ord(ch)<32 or ord(ch)==127 for ch in value):raise ProofSealError(f"{name} contains control characters")
  return value
 def _integer(value,name):
- if not isinstance(value,int) or isinstance(value,bool) or value<0:raise ProofSealError(f"{name} must be a nonnegative integer")
+ if not isinstance(value,int) or isinstance(value,bool) or not 0<=value<=MAX_SAFE_INTEGER:raise ProofSealError(f"{name} must be an integer in 0..{MAX_SAFE_INTEGER}")
  return value
 def _digest(value,name):
  _text(value,name,64)
