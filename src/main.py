@@ -91,7 +91,7 @@ def _создать_windows_coff(модуль,выход,triple):
   путь_ir=os.path.join(папка,"yadro.ll")
   with open(путь_ir,"w",encoding="utf-8",newline="\n") as файл_ir:файл_ir.write(str(модуль))
   результат=_запустить_tool([clang,"-target",triple,"-x","ir","-c",путь_ir,"-o",выход],"clang COFF emission")
- if результат.returncode:raise RuntimeError(f"clang COFF emission завершился ошибкой: {результат.stderr.strip()}")
+ if результат.returncode:raise RuntimeError(f"clang COFF emission завершился с кодом {результат.returncode}; stderr скрыт")
  with open(выход,"rb") as файл:
   if файл.read(2)!=b"\x64\x86":raise RuntimeError("clang не создал AMD64 COFF object")
 def собрать_нативно(ir_код,выход="ядро.o"):
