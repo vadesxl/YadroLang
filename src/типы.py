@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from src.синтаксис import Число,Строка,Булево,Имя,Бинарный,Вызов,Пусть,Присвоить,Вернуть,Если,Пока
-I64,BOOL,STRING,UNKNOWN="i64","bool","string","unknown"
+I64,BOOL,STRING,UNKNOWN="i64","bool","string","unknown";I64_МИН=-(2**63);I64_МАКС=2**63-1
 class ОшибкаТипов(RuntimeError):
  def __init__(self,с,строка=0,код="ЯДРО-Т2000"):self.код=код;super().__init__(f"[{код}] {с} (строка {строка})")
 class ПроверкаТипов:
@@ -50,7 +50,10 @@ class ПроверкаТипов:
    else:self._выр(у,окр)
   return завершено
  def _выр(self,у,окр):
-  if isinstance(у,Число):р=I64
+  if isinstance(у,Число):
+   if type(у.значение) is not int:raise ОшибкаТипов("числовой AST literal должен быть integer, не bool/float/object",у.строка,"ЯДРО-Т2010")
+   if not I64_МИН<=у.значение<=I64_МАКС:raise ОшибкаТипов("числовой AST literal вне i64",у.строка,"ЯДРО-Т2011")
+   р=I64
   elif isinstance(у,Строка):р=STRING
   elif isinstance(у,Булево):р=BOOL
   elif isinstance(у,Имя):

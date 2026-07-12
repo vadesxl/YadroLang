@@ -29,5 +29,5 @@ core=ProofSealCore(CompilerIdentity("yadro-guard","2.1.0","ru","1.0"),SubjectBin
 PROOF=canonical_bytes(seal(core));META={"payload_bytes":len(PROOF),"call_site_count":len(calls),"assumption_count":len(assumptions)}
 def metric(fn,rounds=120):
  result=measure(fn,rounds);result.update(META);return result
-result={"schema":"yadro-benchmark-1.0","python":platform.python_version(),"platform":platform.platform(),"compile":measure(lambda:компилировать(ИСТОЧНИК),40),"ethical_analysis":measure(analyze,80),"mcp_scan":measure(mcp,120),"proof_seal_serialize":metric(lambda:canonical_bytes(seal(core))),"proof_seal_parse":metric(lambda:inspect_bytes(PROOF)),"proof_seal_verify":metric(lambda:verify_bytes(PROOF))}
+result={"schema":"yadro-benchmark-1.0","python":platform.python_version(),"platform":platform.platform(),"compile":measure(lambda:компилировать(ИСТОЧНИК),40),"compile_checked":measure(lambda:компилировать(ИСТОЧНИК,арифметика="checked"),40),"ethical_analysis":measure(analyze,80),"mcp_scan":measure(mcp,120),"proof_seal_serialize":metric(lambda:canonical_bytes(seal(core))),"proof_seal_parse":metric(lambda:inspect_bytes(PROOF)),"proof_seal_verify":metric(lambda:verify_bytes(PROOF))}
 print(json.dumps(result,ensure_ascii=False,indent=2,sort_keys=True))

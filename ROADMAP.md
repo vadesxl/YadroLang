@@ -1,45 +1,60 @@
-# Коммерческая дорожная карта Yadro Guard
+# Дорожная карта Yadro Guard после 2.1.0
+
+Статус документа: инженерный план, не обещание готовых возможностей или сроков.
 
 ## Позиционирование
 
-**Обещание:** до деплоя доказать, что AI-агент не отправит чувствительные данные и не вызовет привилегированные инструменты вне политики.
+Yadro Guard проверяет конкретную версионированную policy до генерации нативного объекта и формирует аудируемое evidence в пределах реализованной семантики. Он не доказывает отсутствие всех утечек, не проверяет поведение произвольного внешнего кода и не заменяет runtime security.
 
-**Покупатель:** AI platform engineering, AppSec, compliance и команды регулируемых продуктов.
+## Уже реализовано в 2.1.0
 
-**Точка входа:** CI-сканер и policy compiler для MCP/agent tool graph. Runtime-конкуренты добавляют задержку, Yadro Guard даёт compile-time evidence без policy-overhead в hot path.
+- CLI `yadro-guard` с командами `scan`, `audit`, `compile` и проверкой JSON policy;
+- JSON/SARIF diagnostics;
+- capability mandates, multi-label taint и bounded interprocedural analysis;
+- Yadro MCP tool-graph scanner;
+- verified LLVM IR и native object emission;
+- Linux, macOS и Windows CI;
+- unsigned Proof Seal model и bounded library verifier.
 
-## 30-дневный MVP
+Точный статус и ограничения находятся в [FEATURE_STATUS.md](FEATURE_STATUS.md), [THREAT_MODEL.md](THREAT_MODEL.md) и [PROOF_SEAL_IMPLEMENTATION.md](PROOF_SEAL_IMPLEMENTATION.md).
 
-### Неделя 1: надёжный компилятор
-- Структурированные тесты и crash-proof диагностики.
-- Межпроцедурные сводки с сохранением меток.
-- Declassification с учётом метки и политики.
-- Fuzzing Lexer/Parser, coverage и threat model.
+## Фаза A: закрыть текущие compiler gaps
 
-### Неделя 2: продуктовый интерфейс
-- CLI `yadro guard scan`.
-- Версионированный YAML policy-файл для sources, sinks, labels, capabilities и sanitizers.
-- JSON и SARIF для GitHub code scanning.
-- Стабильные коды диагностик и machine-readable output.
+- принять нормативную string memory model;
+- реализовать `{ptr, i64}`, bounded printing и точную UTF-8 длину отдельным PR;
+- завершить opt-in checked signed-i64 arithmetic;
+- расширить fuzz/adversarial corpus Lexer, Parser, semantic analysis и CodeGen;
+- сделать documentation examples исполняемыми в CI.
 
-### Неделя 3: интеграции AI-агентов
-- Импорт MCP manifest и графа tool calls.
-- Python/TypeScript adapters популярных agent frameworks.
-- Три demo: утечка ПДн, утечка секрета, excessive agency.
-- Подписанное audit evidence с версиями policy/compiler.
+## Фаза B: интегрировать Proof Seal
 
-### Неделя 4: пилотный релиз
-- Воспроизводимые бинарники Windows, Linux и macOS.
-- Benchmarks, документация, примеры политик и migration guide.
-- Бесплатный open-source CLI; платные team policies и on-prem enterprise.
-- Найти 3 design partners: finance, healthcare, internal developer platforms.
+- UTF-8 source byte spans;
+- immutable effective policy snapshot;
+- экспорт evidence из Ethical Checker;
+- coverage/completeness invariants;
+- versioned LLVM normalization;
+- binding к exact native-object bytes;
+- bounded ELF/Mach-O/COFF inspection;
+- atomic proof output и CLI integration.
 
-## Гипотеза монетизации
+До завершения этой фазы unsigned Proof Seal подтверждает consistency записанного evidence, а не authenticity, provenance или полноту анализа.
 
-- Community: бесплатный CLI и core policies.
-- Team: EUR 499/месяц за CI, SARIF, общие политики и поддержку.
-- Enterprise: от EUR 15k/год за on-prem, кастомные policy packs, SSO, audit retention и SLA.
+## Фаза C: усилить доверие и parity
 
-## Не делать в MVP
+- стандартный authenticated envelope отдельным слоем;
+- differential suite для русского и английского frontends;
+- reproducible package artifacts;
+- проверяемые framework adapters только после фиксации trust boundary;
+- независимые exact-head security reviews и публикация residual risks.
 
-Не клонировать Rust/C++, не строить package ecosystem и не расширять синтаксис ради синтаксиса. Коммерческое доказательство: заблокированные атаки агентов, низкий false-positive rate и аудит, которому доверяет покупатель.
+## Долгосрочные критерии production readiness
+
+Production readiness может быть заявлена только после документированной модели поддержки, воспроизводимых releases, supply-chain controls, fuzzing/coverage evidence, независимого аудита, стабильного ABI/diagnostics policy и закрытия известных high/critical findings. Текущий проект experimental.
+
+## Коммерческая гипотеза
+
+Целевая аудитория: AI platform engineering, AppSec и regulated product teams. Ценность должна подтверждаться воспроизводимыми blocked-attack scenarios, понятными false-positive/false-negative границами и evidence, которое можно независимо проверить. Pricing, SLA, SSO, retention и on-prem packaging пока не являются реализованными возможностями.
+
+## Не делать ради видимости прогресса
+
+Не клонировать Rust/C++, не расширять синтаксис без semantic необходимости, не выдавать дизайн за implementation и не публиковать security claim без теста или доказательства на текущем exact head.
