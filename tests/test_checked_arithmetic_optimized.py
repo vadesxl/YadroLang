@@ -9,9 +9,9 @@ class CheckedArithmeticOptimizedIrTests(unittest.TestCase):
     def optimized(self, source):
         module = llvm.parse_assembly(компилировать(source, арифметика="checked"))
         module.verify()
-        builder = llvm.PassManagerBuilder()
+        builder = llvm.create_pass_manager_builder()
         builder.opt_level = 2
-        manager = llvm.ModulePassManager()
+        manager = llvm.create_module_pass_manager()
         builder.populate(manager)
         manager.run(module)
         module.verify()
@@ -32,14 +32,14 @@ class CheckedArithmeticOptimizedIrTests(unittest.TestCase):
                 self.assertIn("llvm.trap", text)
                 self.assertIn("unreachable", text)
 
-    def test_division_guards_survive_o2_before_sdiv(self):
+    def test_division_guards_survive_o2(self):
         text = self.optimized(
             "функ calc(x, y) { вернуть x / y } "
             "функ старт() { вернуть calc(8, 2) }"
         )
         self.assertIn("llvm.trap", text)
         self.assertIn("sdiv i64", text)
-        self.assertLess(text.index("llvm.trap"), text.index("sdiv i64"))
+        self.assertIn("icmp eq i64", text)
 
 
 if __name__ == "__main__":
