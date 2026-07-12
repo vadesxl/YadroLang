@@ -1,4 +1,4 @@
-import re,tomllib,unittest
+import tomllib,unittest
 from pathlib import Path
 from src.version import VERSION
 ROOT=Path(__file__).resolve().parents[1]
@@ -8,7 +8,7 @@ class ProjectMetadataTests(unittest.TestCase):
   readme=(ROOT/"README.md").read_text(encoding="utf-8")
   self.assertEqual("2.1.0",VERSION)
   self.assertEqual(VERSION,project["version"])
-  self.assertRegex(readme,rf"^# YadroLang \(ЯДРО\) {re.escape(VERSION)}$",msg="README title must expose the package version")
+  self.assertEqual(f"# YadroLang (ЯДРО) {VERSION}",readme.splitlines()[0])
   self.assertIn(f"Версия кода и пакета: {VERSION}",readme)
  def test_main_page_does_not_resurrect_stale_release_claims(self):
   readme=(ROOT/"README.md").read_text(encoding="utf-8")
