@@ -7,19 +7,21 @@ yadro-guard compile program.яд --checked-arithmetic -o program.o
 python -m src.main program.яд --checked-arithmetic
 ```
 
-`scan` и `audit` не принимают flag: они не должны притворяться доказательством runtime overflow behavior.
+`scan` и `audit` не принимают flag: они не должны притворяться доказательством runtime overflow behavior. Direct compiler CLI отклоняет неизвестные и сокращённые flags, а не угадывает их по prefix.
 
 ## LLVM lowering
 
-Checked `+`, `-`, `*` используют `llvm.sadd.with.overflow.i64`, `llvm.ssub.with.overflow.i64` и `llvm.smul.with.overflow.i64`. Overflow bit ведет в trap path. Checked `/` до `sdiv` проверяет divisor zero и пару `INT64_MIN / -1`.
+Checked `+`, `-`, `*` используют LLVM signed overflow intrinsics. После оптимизации LLVM может канонизировать, например, checked subtraction константы в эквивалентный checked addition отрицательной константы; нормативным свойством являются сохранённые overflow predicate, trap path и `unreachable`, а не конкретное имя intrinsic после optimization. Checked `/` до `sdiv` проверяет divisor zero и пару `INT64_MIN / -1`.
 
 Единый internal helper вызывает `llvm.trap` и заканчивается `unreachable`. Контракт не фиксирует signal text или одинаковый numeric exit code: гарантируется ненормальное завершение без продолжения вычисления.
 
-Итоговый модуль проходит LLVM parse и verify. Профиль является instance-local CodeGen dependency, глобального переключателя нет.
+Итоговый модуль проходит LLVM parse и verify. O2 regression повторно верифицирует optimized module и проверяет сохранение overflow/division guards. Профиль является instance-local CodeGen dependency, глобального переключателя нет.
 
 ## Constants, diagnostics и default profile
 
-Диапазон литералов и постоянное опасное деление проверяются как раньше. Checked profile дополнительно отклоняет полностью вычислимый overflow add/sub/mul с кодом `ЯДРО-А1001` и source line. Неизвестный profile отклоняется кодом `ЯДРО-А1000`. Default profile не получает новую overflow-ошибку и не содержит overflow intrinsics или trap helper.
+Диапазон литералов и постоянное опасное деление проверяются как раньше. Checked profile дополнительно отклоняет полностью вычислимый overflow add/sub/mul с кодом `ЯДРО-А1001` и source line. Неизвестный profile отклоняется кодом `ЯДРО-А1000`.
+
+Constant arithmetic analysis ограничен глубиной 256. Исчерпание bound не смешивается с non-constant expression: потенциально значимый arithmetic path отклоняется fail-closed кодом `ЯДРО-А1002`. Non-constant checked expressions продолжают использовать runtime guards. Default profile не получает новую overflow-ошибку и не содержит overflow intrinsics или trap helper.
 
 ## Platform contract
 

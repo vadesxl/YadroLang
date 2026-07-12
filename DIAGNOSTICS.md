@@ -5,6 +5,9 @@
 - `ЯДРО-Э22xx`: capability mandates.
 - `ЯДРО-Э23xx`: explicit/interprocedural/implicit flows.
 - `ЯДРО-Э29xx`: convergence failures.
+- `ЯДРО-А1000`: неизвестный arithmetic profile.
+- `ЯДРО-А1001`: полностью вычислимое checked i64 overflow.
+- `ЯДРО-А1002`: исчерпан bounded constant-arithmetic analysis; fail-closed source error.
 - `ЯДРО-MCP-23xx`: MCP sensitive flow.
 - `ЯДРО-MCP-24xx`: excessive agency.
 
