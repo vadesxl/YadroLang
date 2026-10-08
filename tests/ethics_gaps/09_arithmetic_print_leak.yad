@@ -1,0 +1,9 @@
+# Test case 9: Secret passed through arithmetic then printed
+# Expected: COMPILE ERROR - arithmetic expression inherits taint and reaches print sink
+
+функ старт() требует [ДоступСети] {
+    пусть x = среда.секрет()
+    пусть y = x + 1
+    печать(y)
+    вернуть 0
+}

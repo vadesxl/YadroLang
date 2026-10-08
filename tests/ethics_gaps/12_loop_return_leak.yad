@@ -1,0 +1,13 @@
+# Test case 12: Loop body with tainted return path
+# Expected: COMPILE ERROR - loop-level control taint affects return value
+
+функ старт() требует [ДоступСети] {
+    пусть i = 0
+    пока i < 5 {
+        i = i + 1
+        если среда.секрет() {
+            вернуть 1
+        }
+    }
+    вернуть сеть.отправить(0)
+}

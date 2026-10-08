@@ -1,0 +1,16 @@
+# Test case 14: Variable reassigned after sanitization still marked dirty after merge
+# Expected: COMPILE ERROR or false positive - must be validated by correct merge semantics
+
+функ f(v) {
+    пусть x = v
+    если true {
+        x = анонимизировать(x)
+    } иначе {
+        x = анонимизировать(x)
+    }
+    вернуть x
+}
+
+функ старт() требует [ДоступСети] {
+    вернуть сеть.отправить(f(среда.секрет()))
+}

@@ -1,0 +1,9 @@
+# Test case 15: Secret inside branch reaches string output sink
+# Expected: COMPILE ERROR - printed string output path is also a sink
+
+функ старт() {
+    если среда.секрет() {
+        печать("x")
+    }
+    вернуть 0
+}

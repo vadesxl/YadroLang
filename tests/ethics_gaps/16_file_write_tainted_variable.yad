@@ -1,0 +1,8 @@
+# Test case 16: Direct file write with tainted variable
+# Expected: COMPILE ERROR - file write sink should not accept tainted data
+
+функ старт() требует [ЗаписьДиска] {
+    пусть x = среда.секрет()
+    файл.записать(x)
+    вернуть 0
+}

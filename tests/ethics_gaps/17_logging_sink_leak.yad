@@ -1,0 +1,12 @@
+# Test case 17: Secret reaches logging sink through helper argument
+# Expected: COMPILE ERROR - logging sink should reject tainted param even if helper call is indirect
+
+функ logit(v) требует [ДоступЛог] {
+    лог.ошибка(v)
+    вернуть 0
+}
+
+функ старт() {
+    logit(среда.секрет())
+    вернуть 0
+}

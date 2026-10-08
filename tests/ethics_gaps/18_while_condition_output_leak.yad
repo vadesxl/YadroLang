@@ -1,0 +1,11 @@
+# Test case 18: Tainted while condition used as output decision
+# Expected: COMPILE ERROR - while condition is control dependent and should affect output
+
+функ старт() требует [ДоступСети] {
+    пусть i = 0
+    пока среда.секрет() > 0 {
+        i = i + 1
+    }
+    печать(i)
+    вернуть 0
+}

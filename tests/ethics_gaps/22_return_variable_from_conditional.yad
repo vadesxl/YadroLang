@@ -1,0 +1,10 @@
+# Test case 22: Conditional assignment to return variable from secret condition
+# Expected: COMPILE ERROR - return variable is control-dependent and should not be clean
+
+функ старт() {
+    пусть out = 0
+    если среда.секрет() {
+        out = 5
+    }
+    вернуть out
+}

@@ -1,0 +1,13 @@
+# Test case 20: Sanitizer applied only on one branch should not clean merged result
+# Expected: COMPILE ERROR - sanitizer in one branch does not sanitize merged environment
+
+функ старт() {
+    пусть x = среда.секрет()
+    если true {
+        x = анонимизировать(x)
+    } иначе {
+        x = x
+    }
+    печать(x)
+    вернуть 0
+}

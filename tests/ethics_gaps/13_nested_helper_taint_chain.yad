@@ -1,0 +1,14 @@
+# Test case 13: Deep helper taint chain
+# Expected: COMPILE ERROR - taint from secret propagates through nested helper calls
+
+функ a(v) {
+    вернуть v
+}
+
+функ b(v) {
+    вернуть a(v)
+}
+
+функ старт() требует [ДоступСети] {
+    вернуть сеть.отправить(b(среда.секрет()))
+}

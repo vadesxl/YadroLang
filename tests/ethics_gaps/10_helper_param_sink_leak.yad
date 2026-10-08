@@ -1,0 +1,12 @@
+# Test case 10: Secret passed as function arg to sink through helper
+# Expected: COMPILE ERROR - helper parameter taint reaches sink
+
+функ send(v) требует [ДоступСети] {
+    сеть.отправить(v)
+    вернуть 0
+}
+
+функ старт() {
+    send(среда.секрет())
+    вернуть 0
+}

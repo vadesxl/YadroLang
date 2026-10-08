@@ -1,0 +1,10 @@
+# Test case 21: Direct secret return from helper to outer caller sink
+# Expected: COMPILE ERROR - helper return summary must already include label propagation
+
+функ inner() {
+    вернуть среда.секрет()
+}
+
+функ старт() требует [ДоступСети] {
+    вернуть сеть.отправить(inner())
+}

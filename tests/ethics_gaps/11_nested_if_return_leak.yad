@@ -1,0 +1,15 @@
+# Test case 11: Nested conditional return leak
+# Expected: COMPILE ERROR - nested condition injects implicit flow into return
+
+функ helper(v) {
+    если v > 0 {
+        если true {
+            вернуть 1
+        }
+    }
+    вернуть 0
+}
+
+функ старт() требует [ДоступСети] {
+    вернуть сеть.отправить(helper(среда.секрет()))
+}

@@ -1,0 +1,13 @@
+# Test case 19: Multi-stage control dependency
+# Expected: COMPILE ERROR - chained conditional dependence must propagate through if-depth
+
+функ старт() {
+    пусть x = 0
+    если среда.секрет() {
+        если true {
+            x = 1
+        }
+    }
+    печать(x)
+    вернуть 0
+}
