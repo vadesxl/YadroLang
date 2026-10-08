@@ -1,0 +1,12 @@
+# Test case 3: Control-dependent assignment leak
+# Issue: assignment x = 1 is guarded by secret condition, but x doesn't inherit PC label
+# Expected: COMPILE ERROR - x inherits control-dependent taint from condition
+# Status: CURRENTLY FAILS (accepts code that should be rejected)
+
+функ старт() требует [ДоступСети] {
+    пусть x = 0
+    если среда.секрет() {
+        x = 1
+    }
+    вернуть сеть.отправить(x)
+}

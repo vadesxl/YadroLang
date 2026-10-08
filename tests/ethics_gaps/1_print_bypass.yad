@@ -1,0 +1,11 @@
+# Test case 1: Output bypass via печать
+# Issue: печать is not in sink table, so tainted condition can output directly
+# Expected: COMPILE ERROR - implicit flow via output sink not allowed
+# Status: CURRENTLY FAILS (accepts code that should be rejected)
+
+функ старт() требует [ДоступСети] {
+    если среда.секрет() {
+        печать(1)
+    }
+    вернуть 0
+}

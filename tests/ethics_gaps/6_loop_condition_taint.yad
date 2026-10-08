@@ -1,0 +1,12 @@
+# Test case 6: Loop condition becomes tainted during analysis
+# Issue: loop condition taint not included in stabilized fixpoint before body analysis
+# Expected: COMPILE ERROR - loop condition taint must be in fixpoint
+# Status: CURRENTLY FAILS (accepts code that should be rejected)
+
+функ старт() требует [ДоступСети] {
+    пусть i = 0
+    пока среда.секрет() > 0 {
+        i = i + 1
+    }
+    вернуть сеть.отправить(i)
+}

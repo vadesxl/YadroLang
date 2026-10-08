@@ -1,0 +1,17 @@
+# Test case 7: Sink in helper's loop condition
+# Issue: leak-summary traversal omits sink effects in loop conditions
+# Expected: COMPILE ERROR - sink in loop condition/effect summary is missing from leak check
+# Status: CURRENTLY FAILS (accepts code that should be rejected)
+
+функ helper(p) требует [ДоступСети] {
+    пусть count = 0
+    пока p > 0 {
+        сеть.отправить(0)
+        count = count + 1
+    }
+    вернуть count
+}
+
+функ старт() требует [ДоступСети] {
+    вернуть helper(среда.секрет())
+}

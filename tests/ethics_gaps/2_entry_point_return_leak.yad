@@ -1,0 +1,8 @@
+# Test case 2: Entry-point return value leak
+# Issue: main() prints return value of старт() outside ethics analysis
+# Expected: COMPILE ERROR - tainted return value reaches program output
+# Status: CURRENTLY FAILS (accepts code that should be rejected)
+
+функ старт() требует [ДоступСети] {
+    вернуть среда.секрет()
+}

@@ -1,0 +1,16 @@
+# Test case 4: Control-dependent return via helper
+# Issue: helper's return is implicit-flow dependent on tainted parameter,
+#        but return summary doesn't capture this dependency
+# Expected: COMPILE ERROR - return summary must include implicit control dependency
+# Status: CURRENTLY FAILS (accepts code that should be rejected)
+
+функ helper(v) {
+    если v > 0 {
+        вернуть 1
+    }
+    вернуть 0
+}
+
+функ старт() требует [ДоступСети] {
+    вернуть сеть.отправить(helper(среда.секрет()))
+}

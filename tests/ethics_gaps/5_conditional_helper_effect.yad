@@ -1,0 +1,16 @@
+# Test case 5: Conditional helper effect under tainted control
+# Issue: caller's PC labels (from secret condition) not propagated into callee's effect analysis
+# Expected: COMPILE ERROR - caller PC labels must be included in callee effect summary
+# Status: CURRENTLY FAILS (accepts code that should be rejected)
+
+функ helper_send() требует [ДоступСети] {
+    сеть.отправить(0)
+    вернуть 0
+}
+
+функ старт() требует [ДоступСети] {
+    если среда.секрет() {
+        helper_send()
+    }
+    вернуть 0
+}

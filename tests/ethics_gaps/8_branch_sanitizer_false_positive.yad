@@ -1,0 +1,19 @@
+# Test case 8: False positive on branch-merge sanitization
+# Issue: when both branches sanitize a value identically, the merge incorrectly
+#        reintroduces pre-branch taint, causing a false positive rejection
+# Expected: COMPILE SUCCESS - both branches sanitize correctly, merge should not reintroduce taint
+# Status: CURRENTLY FAILS (rejects code that should be accepted)
+
+функ безопасный(v) {
+    пусть x = v
+    если true {
+        x = анонимизировать(x)
+    } иначе {
+        x = анонимизировать(x)
+    }
+    вернуть x
+}
+
+функ старт() требует [ДоступСети] {
+    вернуть сеть.отправить(безопасный(среда.секрет()))
+}
