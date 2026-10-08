@@ -1,0 +1,14 @@
+# Test case 43: Taint in return value of leaked helper via callback chain
+# Expected: COMPILE ERROR - transitive helper calls must propagate summaries
+
+функ inner() {
+    вернуть среда.секрет()
+}
+
+функ middle() {
+    вернуть inner()
+}
+
+функ старт() требует [ДоступСети] {
+    вернуть сеть.отправить(middle())
+}

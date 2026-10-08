@@ -1,0 +1,12 @@
+# Test case 42: Taint via unintended aliasing (same variable in two branches)
+# Expected: COMPILE ERROR - aliases must merge labels correctly
+
+функ старт() требует [ДоступСети] {
+    пусть alias = 0
+    если true {
+        alias = среда.секрет()
+    } иначе {
+        alias = alias
+    }
+    вернуть сеть.отправить(alias)
+}

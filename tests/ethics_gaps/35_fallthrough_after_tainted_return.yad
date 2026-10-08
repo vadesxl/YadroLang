@@ -1,0 +1,12 @@
+# Test case 35: Tainted return in middle of function with fallthrough
+# Expected: COMPILE ERROR - both paths (explicit return and fallthrough) must be checked
+
+функ helper() требует [ДоступСети] {
+    вернуть сеть.отправить(среда.секрет())
+    печать(0)
+}
+
+функ старт() {
+    helper()
+    вернуть 0
+}

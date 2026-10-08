@@ -1,0 +1,10 @@
+# Test case 47: Sanitizer applied inside branch doesn't affect main environment merge
+# Expected: COMPILE ERROR - merge must use sanitized post-state, not pre-state
+
+функ старт() требует [ДоступСети] {
+    пусть x = среда.секрет()
+    если true {
+        x = хэш(x)
+    }
+    вернуть сеть.отправить(x)
+}

@@ -1,0 +1,14 @@
+# Test case 48: Loop with early return leaks tainted variable
+# Expected: COMPILE ERROR - early return doesn't reset label tracking
+
+функ старт() требует [ДоступСети] {
+    пусть secret = среда.секрет()
+    пусть i = 0
+    пока i < 5 {
+        если secret > 0 {
+            вернуть сеть.отправить(i)
+        }
+        i = i + 1
+    }
+    вернуть 0
+}

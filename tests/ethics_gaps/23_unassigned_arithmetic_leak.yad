@@ -1,0 +1,6 @@
+# Test case 23: Taint escapes through arithmetic operation result without assignment
+# Expected: COMPILE ERROR - binary expression result used directly
+
+функ старт() требует [ДоступСети] {
+    вернуть сеть.отправить(среда.секрет() + 1)
+}

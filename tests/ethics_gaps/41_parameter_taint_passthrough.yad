@@ -1,0 +1,10 @@
+# Test case 41: Secret in function default or implicit parameter
+# Expected: COMPILE ERROR (design: Yadro doesn't have defaults, but pattern matters)
+
+функ helper(v) {
+    вернуть v
+}
+
+функ старт() требует [ДоступСети] {
+    вернуть сеть.отправить(helper(среда.секрет()))
+}

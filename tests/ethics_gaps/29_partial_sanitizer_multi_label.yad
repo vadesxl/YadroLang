@@ -1,0 +1,10 @@
+# Test case 29: Helper sanitizer only removes one label from multi-label value
+# Expected: COMPILE ERROR - remaining labels still block sink
+
+функ старт() требует [ДоступСети] {
+    пусть x = среда.секрет()
+    пусть y = личные.прочитать()
+    пусть combined = x + y
+    пусть cleaned = хэш(combined)
+    вернуть сеть.отправить(cleaned)
+}

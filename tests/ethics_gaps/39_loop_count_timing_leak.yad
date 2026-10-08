@@ -1,0 +1,12 @@
+# Test case 39: Taint in loop counter affects loop count itself (timing leak)
+# Expected: COMPILE ERROR - loop structure is program-observable
+
+функ старт() требует [ДоступСети] {
+    пусть n = среда.секрет()
+    пусть result = 0
+    пока n > 0 {
+        result = result + 1
+        n = n - 1
+    }
+    вернуть сеть.отправить(result)
+}

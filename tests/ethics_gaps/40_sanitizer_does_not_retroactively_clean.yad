@@ -1,0 +1,9 @@
+# Test case 40: Sanitizer applied to variable but old value still accessible
+# Expected: COMPILE ERROR - sanitizer must affect all uses, not just future ones
+
+функ старт() требует [ДоступСети] {
+    пусть x = среда.секрет()
+    пусть y = x
+    пусть x = хэш(x)
+    вернуть сеть.отправить(y)
+}

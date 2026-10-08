@@ -1,0 +1,10 @@
+# Test case 30: Secret reaches sink through else branch when if is empty
+# Expected: COMPILE ERROR - implicit path control taint
+
+функ старт() требует [ДоступСети] {
+    если среда.секрет() > 0 {
+    } иначе {
+        вернуть сеть.отправить(1)
+    }
+    вернуть 0
+}

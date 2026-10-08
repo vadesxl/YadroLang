@@ -1,0 +1,13 @@
+# Test case 36: Secret determines which variable is written, then any is read
+# Expected: COMPILE ERROR - variable definition is control-dependent
+
+функ старт() требует [ДоступСети] {
+    пусть a = 0
+    пусть b = 0
+    если среда.секрет() {
+        a = хранилище.прочитать()
+    } иначе {
+        b = хранилище.прочитать()
+    }
+    вернуть сеть.отправить(a + b)
+}

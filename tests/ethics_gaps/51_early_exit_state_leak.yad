@@ -1,0 +1,11 @@
+# Test case 51: Control flow through exception-like early return with state mutation
+# Expected: COMPILE ERROR - state must be consistent before and after early exit
+
+функ старт() требует [ДоступСети] {
+    пусть x = 0
+    если среда.секрет() {
+        x = хранилище.прочитать()
+        вернуть сеть.отправить(1)
+    }
+    вернуть сеть.отправить(x)
+}

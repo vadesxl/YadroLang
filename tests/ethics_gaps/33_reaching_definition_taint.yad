@@ -1,0 +1,10 @@
+# Test case 33: Variable modified in branch, used outside via different path
+# Expected: COMPILE ERROR - reaching definition must account for all paths
+
+функ старт() требует [ДоступСети] {
+    пусть x = 0
+    если среда.секрет() {
+        x = хранилище.прочитать()
+    }
+    вернуть сеть.отправить(x)
+}

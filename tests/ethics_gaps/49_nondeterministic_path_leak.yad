@@ -1,0 +1,9 @@
+# Test case 49: Taint in non-deterministic branch (both branches exist at runtime)
+# Expected: COMPILE ERROR - both paths must be analyzed
+
+функ старт() требует [ДоступСети] {
+    если среда.секрет() {
+        вернуть сеть.отправить(1)
+    }
+    вернуть сеть.отправить(0)
+}

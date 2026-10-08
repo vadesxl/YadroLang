@@ -1,0 +1,9 @@
+# Test case 24: Secret inside comparison operator used to select output
+# Expected: COMPILE ERROR - comparison itself becomes control-dependent
+
+функ старт() требует [ДоступСети] {
+    если среда.секрет() == 5 {
+        вернуть сеть.отправить(1)
+    }
+    вернуть 0
+}

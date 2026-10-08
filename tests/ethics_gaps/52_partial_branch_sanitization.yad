@@ -1,0 +1,14 @@
+# Test case 52: Multi-branch sanitizer with partial coverage
+# Expected: COMPILE ERROR - one unsanitized branch still leaks
+
+функ старт() требует [ДоступСети] {
+    пусть x = среда.секрет()
+    если true {
+        x = хэш(x)
+    } иначе если false {
+        x = хэш(x)
+    } иначе {
+        x = x
+    }
+    вернуть сеть.отправить(x)
+}

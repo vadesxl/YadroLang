@@ -1,0 +1,12 @@
+# Test case 38: Secret reaches two different sinks through different paths
+# Expected: COMPILE ERROR - must reject both paths
+
+функ старт() требует [ДоступСети, ЗаписьДиска] {
+    пусть secret = среда.секрет()
+    если true {
+        сеть.отправить(secret)
+    } иначе {
+        файл.записать(secret)
+    }
+    вернуть 0
+}

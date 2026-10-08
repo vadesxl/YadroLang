@@ -1,0 +1,10 @@
+# Test case 44: Comparison operator itself becomes tainted source
+# Expected: COMPILE ERROR - operators that consume secrets must mark result
+
+функ старт() требует [ДоступСети] {
+    пусть is_gt = среда.секрет() > 5
+    если is_gt {
+        вернуть сеть.отправить(1)
+    }
+    вернуть 0
+}

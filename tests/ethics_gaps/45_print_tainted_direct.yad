@@ -1,0 +1,8 @@
+# Test case 45: Taint escapes through print with format string substitution
+# Expected: COMPILE ERROR - печать with tainted argument is still output sink
+
+функ старт() требует [ДоступСети] {
+    пусть secret = среда.секрет()
+    печать(secret)
+    вернуть 0
+}

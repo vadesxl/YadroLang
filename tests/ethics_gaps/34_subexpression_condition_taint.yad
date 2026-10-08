@@ -1,0 +1,10 @@
+# Test case 34: Secret in sub-expression of comparison used as condition
+# Expected: COMPILE ERROR - sub-expression taint affects control
+
+функ старт() требует [ДоступСети] {
+    пусть secret = среда.секрет()
+    если (secret + 1) > 5 {
+        вернуть сеть.отправить(1)
+    }
+    вернуть 0
+}

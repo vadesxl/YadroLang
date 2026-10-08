@@ -1,0 +1,13 @@
+# Test case 28: Taint escapes through conditional inside loop
+# Expected: COMPILE ERROR - nested control contexts must compose
+
+функ старт() требует [ДоступСети] {
+    пусть i = 0
+    пока i < 5 {
+        если среда.секрет() {
+            вернуть сеть.отправить(i)
+        }
+        i = i + 1
+    }
+    вернуть 0
+}

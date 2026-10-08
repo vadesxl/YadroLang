@@ -1,0 +1,14 @@
+# Test case 37: Secret in ternary-like nested if-else chain
+# Expected: COMPILE ERROR - deeply nested control dependency
+
+функ старт() требует [ДоступСети] {
+    пусть result = 0
+    если среда.секрет() > 0 {
+        если среда.секрет() > 1 {
+            если среда.секрет() > 2 {
+                result = хранилище.прочитать()
+            }
+        }
+    }
+    вернуть сеть.отправить(result)
+}

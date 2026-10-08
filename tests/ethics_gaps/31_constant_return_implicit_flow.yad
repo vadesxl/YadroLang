@@ -1,0 +1,13 @@
+# Test case 31: Return constant from helper but decision depends on secret
+# Expected: COMPILE ERROR - implicit flow from parameter to return
+
+функ decide(v) {
+    если v > 0 {
+        вернуть 0
+    }
+    вернуть 0
+}
+
+функ старт() требует [ДоступСети] {
+    вернуть сеть.отправить(decide(среда.секрет()))
+}

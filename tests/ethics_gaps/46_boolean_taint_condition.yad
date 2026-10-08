@@ -1,0 +1,10 @@
+# Test case 46: Secret in complex boolean expression as condition
+# Expected: COMPILE ERROR - any use in boolean changes control flow
+
+функ старт() требует [ДоступСети] {
+    пусть secret = среда.секрет()
+    если secret {
+        вернуть сеть.отправить(1)
+    }
+    вернуть 0
+}
