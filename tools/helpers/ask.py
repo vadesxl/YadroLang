@@ -52,6 +52,7 @@ ROLES = {
 
 _DAHL_URL = "https://inference.dahl.global/v1/chat/completions"
 TEAM = ("glm", "deepseek", "minimax")   # helper models on the Dahl key; --model both/all asks every one
+TEAM2 = ("glm2", "deepseek2", "minimax2")  # same models on the second key; used by --model all
 PROVIDERS = {
     "glm": {"env": "DAHL_API_KEY", "url": _DAHL_URL,
             "model": os.environ.get("DAHL_GLM_MODEL", "zai-org/GLM-5.3-Flash")},
@@ -59,6 +60,13 @@ PROVIDERS = {
                  "model": os.environ.get("DAHL_DEEPSEEK_MODEL", "deepseek-ai/DeepSeek-V4-Flash-0731")},
     "minimax": {"env": "DAHL_API_KEY", "url": _DAHL_URL,
                 "model": os.environ.get("DAHL_MINIMAX_MODEL", "MiniMaxAI/MiniMax-M2.7")},
+    # same three models on the SECOND Dahl key (own concurrency limit -> twice the helpers)
+    "glm2": {"env": "DAHL_API_KEY_2", "url": _DAHL_URL,
+             "model": os.environ.get("DAHL_GLM_MODEL", "zai-org/GLM-5.3-Flash")},
+    "deepseek2": {"env": "DAHL_API_KEY_2", "url": _DAHL_URL,
+                  "model": os.environ.get("DAHL_DEEPSEEK_MODEL", "deepseek-ai/DeepSeek-V4-Flash-0731")},
+    "minimax2": {"env": "DAHL_API_KEY_2", "url": _DAHL_URL,
+                 "model": os.environ.get("DAHL_MINIMAX_MODEL", "MiniMaxAI/MiniMax-M2.7")},
     "openrouter": {"env": "OPENROUTER_API_KEY", "url": "https://openrouter.ai/api/v1/chat/completions",
                    "model": os.environ.get("OPENROUTER_MODEL", "deepseek/deepseek-chat-v3-0324:free")},
     "gemini": {"env": "GEMINI_API_KEY",
@@ -201,7 +209,7 @@ def main(argv=None):
                 print(f"{p:9} FAIL {e}")
         return 0
     if a.model in ("both", "all"):
-        providers = [p for p in TEAM if p in available()]
+        providers = [p for p in (TEAM + TEAM2 if a.model == "all" else TEAM) if p in available()]
     else:
         providers = [a.model or (available() or [None])[0]]
     if not providers or not providers[0]:
