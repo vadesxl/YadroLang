@@ -94,6 +94,8 @@ class ТестыУправленияСейфом(unittest.TestCase):
             vault.удалить_навсегда(токен)                            # сначала корзина
         vault.в_корзину(токен)
         self.assertEqual([], vault.список())
+        with self.assertRaises(vault.ОшибкаСейфа):
+            vault.достать(токен, мандат=True)                       # из корзины не выдаётся
         self.assertNotIn("trash-me-123456", [v[0] for v in vault.known_values()])   # удалённое не ищется
         vault.восстановить(токен)
         self.assertEqual(1, len(vault.список()))

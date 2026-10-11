@@ -34,7 +34,40 @@ except Exception:  # pragma: no cover - local tests without FastAPI
         def __init__(self, **kw):
             self.__dict__.update(kw)
 
-router = APIRouter()
+def _same_origin_guard():
+    """CSRF guard for every POST: a web page in the user's browser must not be able to approve
+    an incident, purge the vault or change the firewall. Browsers cannot send a custom header
+    or application/json cross-origin without a CORS preflight, which this API never grants."""
+    try:
+        from fastapi import Request
+        from fastapi.responses import JSONResponse
+    except Exception:  # pragma: no cover - local tests without FastAPI
+        return []
+
+    async def guard(request: Request):
+        ctype = request.headers.get("content-type", "").split(";")[0].strip().lower()
+        origin = request.headers.get("origin", "")
+        host = origin.split("://", 1)[-1].split("/")[0].rsplit(":", 1)[0].strip("[]").lower() if origin else ""
+        ok_origin = (not origin or origin == "null" or origin.startswith(("app://", "file://"))
+                     or host in ("127.0.0.1", "localhost", "::1"))
+        # Web dashboard (http origin) must also send our header; Hermes Desktop's ctx.rest
+        # (app:// / no origin) cannot add headers, JSON + origin check covers it.
+        needs_header = origin.startswith(("http://", "https://"))
+        if request.method == "POST" and (ctype != "application/json" or not ok_origin
+                                         or (needs_header and request.headers.get("x-yadro-guard") != "1")):
+            from fastapi import HTTPException
+            raise HTTPException(status_code=403, detail="Request refused: not from the Guard tab.")
+    # `from __future__ import annotations` turns the hint into a string FastAPI cannot resolve
+    # here (Request is a local import), so set the real class explicitly.
+    guard.__annotations__["request"] = Request
+    from fastapi import Depends
+    return [Depends(guard)]
+
+
+try:
+    router = APIRouter(dependencies=_same_origin_guard())
+except TypeError:  # pragma: no cover - fallback APIRouter without arguments
+    router = APIRouter()
 
 PLUGIN_DIR = Path(__file__).resolve().parent.parent
 CONFIG_FILE = PLUGIN_DIR / "config.json"

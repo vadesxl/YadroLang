@@ -68,6 +68,27 @@ class ТестыПлагинаHermes(unittest.TestCase):
         self.assertIn('sandbox: ""', js)              # отчёт в iframe без скриптов
         self.assertIn('register("yadro-guard"', js)
 
+    def test_csrf_чужой_сайт_не_может_нажать_кнопки(self):
+        try:
+            from fastapi import FastAPI
+            from fastapi.testclient import TestClient
+        except Exception:
+            self.skipTest("FastAPI не установлен (есть внутри Hermes)")
+        app = FastAPI()
+        app.include_router(self.api.router, prefix="/p")
+        c = TestClient(app)
+        тело = '{"incident":"YG-NONE","choice":"allow"}'
+        def код(**h):
+            return c.post("/p/incidents/decide", content=тело, headers=h).status_code
+        self.assertEqual(403, код(**{"content-type": "text/plain", "origin": "https://evil.example"}))
+        self.assertEqual(403, код(**{"content-type": "application/json", "origin": "https://evil.example",
+                                     "x-yadro-guard": "1"}))
+        self.assertEqual(403, код(**{"content-type": "application/json", "origin": "http://127.0.0.1:9119"}))
+        self.assertEqual(200, код(**{"content-type": "application/json", "origin": "http://127.0.0.1:9119",
+                                     "x-yadro-guard": "1"}))
+        self.assertEqual(200, код(**{"content-type": "application/json"}))      # Hermes Desktop (без Origin)
+        self.assertEqual(200, c.get("/p/health").status_code)
+
     def test_desktop_половина_собрана_и_в_рамках_sdk(self):
         import re, subprocess
         р = subprocess.run([sys.executable, str(КОРЕНЬ / "tools" / "build_desktop_plugin.py"), "--check"],

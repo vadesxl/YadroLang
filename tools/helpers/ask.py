@@ -138,7 +138,7 @@ def call(provider: str, system: str, user: str) -> str:
         headers["Authorization"] = f"Bearer {key}"
     if provider == "openrouter":
         headers["X-Title"] = "Yadro Guard review"
-    body = json.dumps({"model": p["model"], "temperature": 0.2, "max_tokens": 2500,
+    body = json.dumps({"model": p["model"], "temperature": 0.2, "max_tokens": int(os.environ.get("HELPER_MAX_TOKENS", "8000")),
                        "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}).encode()
     last = ""
     for attempt in range(4):                       # gateways (524/502/503/429, resets) are often transient

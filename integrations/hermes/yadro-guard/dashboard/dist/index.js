@@ -14,7 +14,7 @@
   function post(path, body) {
     return SDK.fetchJSON(API + path, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "X-Yadro-Guard": "1" },   // CSRF guard on the backend
       body: JSON.stringify(body),
     });
   }
