@@ -57,6 +57,24 @@ Not ours (tell owner, do not fix):
 - Home widgets "no data": home-dashboard `plugin_api.py` imports `get_usage_analytics`, `list_cron_jobs` that no longer
   exist in `hermes_cli.web_server`. Fix = update home-dashboard from its repo.
 
+## Session 2026-10-11 (late night) — done, pushed up to 0c562b8 (PR #48), 0e31a6b local
+- Desktop commit pushed (git push works through Git Credential Manager = "manager"; no token needed).
+- install.ps1 verified: copies `desktop\` (tested with a temp HERMES_HOME).
+- Exposure: firewall verdict now real — `firewall_state()` reads local policy via COM `HNetCfg.FwPolicy2`
+  (0.2 s, no admin; Get-NetFirewall* took 11-21 s). `firewall_verdict()` matches program path / service / port /
+  profile; says "blocked" only when certain. Store-app rules (owner SID + no program) ignored for desktop apps;
+  Wi-Fi Direct (`@wlansvc.dll`) and keyword ports (RPC, IPHTTPS) => "not verified". IPv4+IPv6 merged
+  (`merge_dual_stack`, keeps the riskier verdict). svchost named by hosted service (`tasklist /SVC`,
+  `services.WINDOWS_SERVICES`: W32Time=NTP, DoSvc, CDPSvc). Owner PC: 445/139/1236 stay "not verified" because a
+  Codex sandbox block rule (`codex_sandbox_offline_block_inbound`, partial remote range) exists — honest result.
+- UI: report shown inline (fixed modal was clipped: backdrop-filter on cards breaks position:fixed); secret kind
+  picker = buttons instead of native <select> (white dropdown); code sample prefilled. Reinstalled into Hermes.
+- Helpers: `tools/helpers/swarm.py` + `jobs_release.json` (10 jobs: redteam detectors/crypto/actions/policy, review
+  vault/api/exposure/UI, architect, tester). Third model MiniMax-M2.7 added (`TEAM`, `--model all`).
+  **Dahl gateway returns HTTP 502 for every uncached prompt** (only a cached "hi" returns 200) since ~23:37.
+  Swarm runs in background with `--wait` (probes every 5 min up to 6 h). Answers -> `tools/helpers/out/<job>_<model>.md`,
+  progress -> `tools/helpers/out/swarm.log`. Read them, turn real findings into tests.
+
 ## NEXT (priority order)
 1. Run full tests (`$env:PYTHONUTF8='1'; python tests\run_tests.py`) — not run after the Desktop change; the targeted
    run's output was lost. Then commit + push to `security/ethics-gaps` (PR #48).
