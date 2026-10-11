@@ -20,10 +20,12 @@ class ТестыHtmlОтчёта(unittest.TestCase):
         out = io.StringIO()
         self.assertEqual(НАРУШЕНИЕ_ПОЛИТИКИ, run(["scan", str(путь), "--format", "html"], out, io.StringIO()))
         отчёт = (self.папка / "prog.report.html").read_text(encoding="utf-8")
-        self.assertIn("ЗАБЛОКИРОВАНО", отчёт)
+        self.assertIn("Обнаружена утечка", отчёт)
         self.assertIn("ЯДРО-Э2301", отчёт)
         self.assertIn("пользователь.данные()", отчёт)
         self.assertIn("сеть.отправить", отчёт)
+        self.assertIn("Персональные данные", отчёт)   # человеческое имя метки
+        self.assertIn("Карантин", отчёт)               # панель "как исправить"
         self.assertIn('class="hit"', отчёт)
         self.assertIn("отчёт:", out.getvalue())
 
@@ -31,7 +33,7 @@ class ТестыHtmlОтчёта(unittest.TestCase):
         путь = self.исходник("функ старт() { пусть х = платеж.карта() пусть у = зашифровать(х) вернуть у }")
         self.assertEqual(УСПЕХ, run(["scan", str(путь), "--format", "html"], io.StringIO(), io.StringIO()))
         отчёт = (self.папка / "prog.report.html").read_text(encoding="utf-8")
-        self.assertIn("УТЕЧЕК НЕ НАЙДЕНО", отчёт)
+        self.assertIn("Утечек не найдено", отчёт)
         self.assertIn("зашифровать", отчёт)
 
     def test_явный_путь_отчёта(self):

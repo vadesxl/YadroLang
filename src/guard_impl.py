@@ -47,16 +47,29 @@ def классифицировать(e):
  if isinstance(e,(OSError,UnicodeError,json.JSONDecodeError,ОшибкаПолитики,compiler.ОшибкаТочкиВхода,compiler.ОшибкаСемантики,ОшибкаПарсера,ОшибкаЛексера)):return ОШИБКА_ИСХОДНИКА
  return ВНУТРЕННЯЯ_ОШИБКА
 def parser():
- root=argparse.ArgumentParser(prog="yadro-guard");root.add_argument("--version",action="store_true");sub=root.add_subparsers(dest="command");common=argparse.ArgumentParser(add_help=False);common.add_argument("source");common.add_argument("--policy");common.add_argument("--format",choices=("text","json","sarif","html"),default="text");common.add_argument("--report",help="путь HTML-отчёта (по умолчанию <source>.report.html)");common.add_argument("--open",action="store_true",help="открыть HTML-отчёт в браузере");sub.add_parser("scan",parents=[common]);cp=sub.add_parser("compile",parents=[common]);cp.add_argument("-o","--output",default="ядро.o");cp.add_argument("--ir",action="store_true");sub.add_parser("audit",parents=[common]);pp=sub.add_parser("policy");ps=pp.add_subparsers(dest="policy_command",required=True);c=ps.add_parser("check");c.add_argument("path");sub.add_parser("version");return root
+ root=argparse.ArgumentParser(prog="yadro-guard");root.add_argument("--version",action="store_true");sub=root.add_subparsers(dest="command");common=argparse.ArgumentParser(add_help=False);common.add_argument("source");common.add_argument("--policy");common.add_argument("--format",choices=("text","json","sarif","html"),default="text");common.add_argument("--report",help="путь HTML-отчёта (по умолчанию <source>.report.html)");common.add_argument("--open",action="store_true",help="открыть HTML-отчёт в браузере");sp=sub.add_parser("scan",parents=[common]);sp.add_argument("--fix",action="store_true",help="записать исправленную копию <source>.fixed с обёрткой");cp=sub.add_parser("compile",parents=[common]);cp.add_argument("-o","--output",default="ядро.o");cp.add_argument("--ir",action="store_true");sub.add_parser("audit",parents=[common]);pp=sub.add_parser("policy");ps=pp.add_subparsers(dest="policy_command",required=True);c=ps.add_parser("check");c.add_argument("path");sub.add_parser("version");return root
 def html_report(args,source,diag=None,findings=None,stream=None):
  """Пишет самодостаточный HTML-отчёт; путь печатается в stdout."""
  from src import report_html
+ if diag is not None:diag=dict(diag,_исходник=source)
  out=Path(args.report) if args.report else Path(args.source).with_suffix(".report.html")
  out.write_text(report_html.построить(str(Path(args.source).resolve()),source,diag,findings,VERSION),encoding="utf-8")
  print(f"отчёт: {out.resolve()}",file=stream or sys.stdout)
  if args.open:
   import webbrowser;webbrowser.open(out.resolve().as_uri())
  return out
+def apply_fix(args,source,diag,stdout,stderr):
+ """Пишет исправленную копию рядом (<source>.fixed.ext). Возвращает код выхода.
+ Fail-closed: если авто-фикс не проходит анализатор, файл НЕ пишем."""
+ from src import autofix
+ plan=autofix.предложить(source,diag)
+ if not plan or not plan["проверено"]:
+  print("авто-починка невозможна: нет надёжной обёртки для этой утечки",file=stderr);return НАРУШЕНИЕ_ПОЛИТИКИ
+ src_path=Path(args.source);out=src_path.with_suffix(".fixed"+src_path.suffix)
+ out.write_text(plan["новый_исходник"],encoding="utf-8")
+ print(f"исправлено обёрткой {plan['обёртка']}(...) на строке {plan['строка']}",file=stdout)
+ print(f"- {plan['было'].strip()}",file=stdout);print(f"+ {plan['стало'].strip()}",file=stdout)
+ print(f"записано: {out.resolve()}",file=stdout);return УСПЕХ
 def run(argv=None,stdout=sys.stdout,stderr=sys.stderr):
  args=parser().parse_args(argv)
  if args.version or args.command=="version":print(VERSION,file=stdout);return УСПЕХ
@@ -73,7 +86,12 @@ def run(argv=None,stdout=sys.stdout,stderr=sys.stderr):
    try:compiler.компилировать(source);an.проверить(ast)
    except ЭтическаяОшибка as e:html_report(args,source,diagnostic(e,args.source),None,stdout);return НАРУШЕНИЕ_ПОЛИТИКИ
    html_report(args,source,None,an.аудит_трейл,stdout);return УСПЕХ
-  if args.command=="scan":compiler.компилировать(source);emit({"status":"ok","path":str(Path(args.source).resolve()),"version":VERSION},args.format,stdout)
+  if args.command=="scan":
+   try:compiler.компилировать(source)
+   except ЭтическаяОшибка as e:
+    if getattr(args,"fix",False):return apply_fix(args,source,diagnostic(e,args.source),stdout,stderr)
+    raise
+   emit({"status":"ok","path":str(Path(args.source).resolve()),"version":VERSION},args.format,stdout)
   elif args.command=="compile":
    ir=compiler.компилировать(source,выводить_ir=args.ir)
    if not args.ir:compiler.собрать_нативно(ir,args.output)
