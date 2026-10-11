@@ -165,6 +165,59 @@ async def vault_put(body: "SecretBody") -> Dict[str, Any]:
     return await asyncio.to_thread(_engine, ["src.vault", "put-json"], {"secret": secret, "label": label})
 
 
+MAX_FILE_B64 = 14_000_000            # ~10 MB file after base64
+VAULT_OPS = ("rename", "relabel", "replace", "trash", "restore", "purge", "save")
+_TOKEN_CHARS = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
+
+
+class FileBody(BaseModel):
+    data: str                         # base64 of the file
+    filename: str
+    label: str
+    title: str = ""
+
+
+class VaultOpBody(BaseModel):
+    op: str
+    token: str
+    title: str = ""
+    label: str = ""
+    secret: str = ""
+
+
+@router.post("/vault/file")
+async def vault_file(body: "FileBody") -> Dict[str, Any]:
+    data, label = getattr(body, "data", ""), getattr(body, "label", "")
+    if not isinstance(data, str) or not data:
+        return _error("Choose a file first.")
+    if len(data) > MAX_FILE_B64:
+        return _error("This file is too large (limit 10 MB).")
+    if label not in LABELS:
+        return _error("Choose what kind of data this is.")
+    return await asyncio.to_thread(_engine, ["src.vault", "op-json"],
+                                   {"op": "file", "data": data, "label": label,
+                                    "filename": str(getattr(body, "filename", ""))[:200],
+                                    "title": str(getattr(body, "title", ""))[:80]})
+
+
+@router.post("/vault/op")
+async def vault_op(body: "VaultOpBody") -> Dict[str, Any]:
+    """Manage an entry. Never returns a secret value; 'save' writes a file copy to Downloads."""
+    op, token = str(getattr(body, "op", "")), str(getattr(body, "token", ""))
+    if op not in VAULT_OPS:
+        return _error("Unknown operation.")
+    if not token.startswith("yg_tok_") or len(token) > 80 or not set(token) <= _TOKEN_CHARS:
+        return _error("Unknown entry.")
+    secret = getattr(body, "secret", "")
+    if op == "replace" and (not isinstance(secret, str) or not secret or len(secret) > MAX_SECRET):
+        return _error("Enter the new value (limit 4 KB).")
+    if op == "relabel" and getattr(body, "label", "") not in LABELS:
+        return _error("Choose what kind of data this is.")
+    return await asyncio.to_thread(_engine, ["src.vault", "op-json"],
+                                   {"op": op, "token": token, "title": str(getattr(body, "title", ""))[:80],
+                                    "label": getattr(body, "label", ""), "secret": secret})
+
+
 class DecisionBody(BaseModel):
     incident: str
     choice: str
@@ -215,6 +268,52 @@ async def exposure(refresh: int = 0) -> Dict[str, Any]:
         return _error("The exposure scan failed. Nothing was changed on this computer.")
     _EXPOSURE_CACHE.update(result=result, at=time.time())
     return result
+
+
+class RemedyBody(BaseModel):
+    action: str
+    proto: str = ""
+    port: int = 0
+    pid: int = -1
+    fix: str = ""
+    page: str = ""
+
+
+REMEDY_ACTIONS = ("block_port", "unblock", "disable_service", "stop_program", "show_file", "trust", "untrust")
+
+
+@router.post("/exposure/act")
+async def exposure_act(body: "RemedyBody") -> Dict[str, Any]:
+    """Do something about a listener. System changes ask Windows (UAC) for confirmation."""
+    mod = _engine_module("remedy")
+    if mod is None:
+        return _error("Yadro Guard is not set up yet.")
+    action = str(getattr(body, "action", ""))
+    try:
+        if action == "undo":
+            fix = str(getattr(body, "fix", ""))[:16]
+            result = await asyncio.to_thread(mod.undo, fix)
+        elif action == "settings":
+            result = await asyncio.to_thread(mod.open_settings, str(getattr(body, "page", "")))
+        elif action in REMEDY_ACTIONS:
+            result = await asyncio.to_thread(mod.run, action, str(getattr(body, "proto", "")),
+                                             getattr(body, "port", 0), getattr(body, "pid", -1))
+        else:
+            return _error("Unknown action.")
+    except mod.RemedyError as e:
+        return _error(str(e))
+    except Exception:
+        return _error("The action failed. Nothing was changed.")
+    _EXPOSURE_CACHE.clear()
+    return result
+
+
+@router.get("/exposure/fixes")
+async def exposure_fixes() -> Dict[str, Any]:
+    mod = _engine_module("remedy")
+    if mod is None:
+        return _error("Yadro Guard is not set up yet.")
+    return {"status": "ok", "items": (await asyncio.to_thread(mod.journal))[:30]}
 
 
 @router.get("/incidents")

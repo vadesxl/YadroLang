@@ -53,6 +53,10 @@ class Listener:
     services: List[str] = field(default_factory=list)     # Windows services in this process
     addresses: List[str] = field(default_factory=list)    # 0.0.0.0 and :: merged into one row
     tags: List[str] = field(default_factory=list)
+    actions: List[str] = field(default_factory=list)      # what the user can do (see remedy.py)
+    settings: str = ""                                    # Windows settings page that helps
+    breaks: str = ""                                      # what stops working if the service is off
+    trusted: bool = False                                 # user said "I know this, it is fine"
 
     def public(self) -> dict:
         return dict(self.__dict__)
@@ -379,8 +383,16 @@ def scan(with_firewall: bool = True) -> dict:
         assess(l)
     listeners = [l for l in listeners if not (l.proto == "UDP" and l.reach == "this_computer")]
     listeners = merge_dual_stack(listeners)
-    listeners.sort(key=lambda l: (S.SEVERITY_ORDER[l.severity], l.reach != "all_networks", l.port))
-    counts = {s: sum(1 for l in listeners if l.severity == s) for s in S.SEVERITY_ORDER}
+    from . import remedy as R
+    trust, blocked_by_guard = R.trusted(), R.guard_rules()
+    for l in listeners:
+        l.trusted = R.trust_key(l.proto, l.port, l.process) in trust
+        l.actions = R.actions_for(l, R.rule_name(l.proto, l.port) in blocked_by_guard, l.trusted)
+        l.settings = R.settings_for(l) or ""
+        l.breaks = R.what_breaks(l)
+    listeners.sort(key=lambda l: (l.trusted, S.SEVERITY_ORDER[l.severity], l.reach != "all_networks", l.port))
+    counts = {s: sum(1 for l in listeners if l.severity == s and not l.trusted) for s in S.SEVERITY_ORDER}
+    counts["trusted"] = sum(1 for l in listeners if l.trusted)
     score = max(0, 100 - 30 * counts[S.CRITICAL] - 12 * counts[S.HIGH] - 5 * counts[S.MEDIUM]
                 - min(10, counts[S.LOW]))
     return {"status": "ok", "scanned_at": int(time.time()), "duration_ms": int((time.time() - started) * 1000),

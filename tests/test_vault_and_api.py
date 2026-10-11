@@ -52,6 +52,78 @@ class ТестыСейфа(unittest.TestCase):
             vault.достать(токен, мандат=True)
 
 
+@unittest.skipUnless(os.name == "nt", "DPAPI есть только в Windows")
+class ТестыУправленияСейфом(unittest.TestCase):
+    def setUp(self):
+        self.папка = tempfile.mkdtemp()
+        self.env = mock.patch.dict(os.environ, {"YADRO_VAULT_DIR": self.папка})
+        self.env.start()
+
+    def tearDown(self):
+        self.env.stop()
+
+    def test_файл_шифруется_и_сохраняется_копией(self):
+        данные = b"OPENAI_API_KEY=sk-proj-abcdefghijklmnopqrstuvwx\n"
+        токен = vault.положить_файл(данные, "..\\..\\secret<1>.env", "УчетныеДанные")
+        сырой = vault.путь_сейфа().read_text(encoding="utf-8")
+        self.assertNotIn("sk-proj", сырой)
+        запись = [x for x in vault.список(с_корзиной=True) if x["token"] == токен][0]
+        self.assertEqual(("file", "secret_1_.env", len(данные)), (запись["kind"], запись["filename"], запись["size"]))
+        куда = Path(self.папка) / "out"
+        п1, п2 = vault.сохранить_файл(токен, куда), vault.сохранить_файл(токен, куда)
+        self.assertEqual(данные, Path(п1).read_bytes())
+        self.assertNotEqual(п1, п2)                                  # не перезаписывает
+        self.assertTrue(Path(п1).resolve().is_relative_to(куда.resolve()))   # без выхода из папки
+        self.assertIn(("OPENAI_API_KEY=sk-proj-abcdefghijklmnopqrstuvwx", "Credentials", "secret_1_.env"),
+                      vault.known_values())                          # маленький файл ищется в трафике
+
+    def test_переименование_метка_замена_без_смены_токена(self):
+        токен = vault.положить("old-value-1", "ПДн")
+        vault.переименовать(токен, "  Мой ключ  ")
+        vault.сменить_метку(токен, "Финансы")
+        vault.заменить(токен, "new-value-2")
+        з = [x for x in vault.список() if x["token"] == токен][0]
+        self.assertEqual(("Мой ключ", "Financial"), (з["title"], з["label"]))
+        self.assertEqual("new-value-2", vault.достать(токен, мандат=True))
+        with self.assertRaises(vault.ОшибкаСейфа):
+            vault.переименовать(токен, "   ")
+
+    def test_корзина_восстановление_и_окончательное_удаление(self):
+        токен = vault.положить("trash-me-123456", "ПДн")
+        with self.assertRaises(vault.ОшибкаСейфа):
+            vault.удалить_навсегда(токен)                            # сначала корзина
+        vault.в_корзину(токен)
+        self.assertEqual([], vault.список())
+        self.assertNotIn("trash-me-123456", [v[0] for v in vault.known_values()])   # удалённое не ищется
+        vault.восстановить(токен)
+        self.assertEqual(1, len(vault.список()))
+        vault.в_корзину(токен)
+        vault.удалить_навсегда(токен)
+        self.assertEqual([], vault.список(с_корзиной=True))
+
+    def test_корзина_чистится_через_30_дней(self):
+        токен = vault.положить("old", "ПДн")
+        vault.в_корзину(токен)
+        д = json.loads(vault.путь_сейфа().read_text(encoding="utf-8"))
+        д["items"][токен]["deleted"] -= 31 * 86400
+        vault.путь_сейфа().write_text(json.dumps(д), encoding="utf-8")
+        self.assertEqual([], vault.список(с_корзиной=True))
+
+    def test_операции_через_json_и_лимиты(self):
+        import base64, io
+        def оп(**к):
+            with mock.patch("sys.stdin", io.StringIO(json.dumps(к))):
+                return vault.операция_json()
+        р = оп(op="file", data=base64.b64encode(b"hello").decode(), filename="a.txt", label="PII")
+        self.assertEqual("ok", р["status"])
+        self.assertEqual("ok", оп(op="rename", token=р["token"], title="x")["status"])
+        self.assertEqual("error", оп(op="replace", token=р["token"], secret="y")["status"])  # файл не текст
+        self.assertEqual("error", оп(op="nope")["status"])
+        self.assertEqual("error", оп(op="file", data="!!!", filename="a", label="PII")["status"])
+        with self.assertRaises(vault.ОшибкаСейфа):
+            vault.положить_файл(b"x" * (vault.МАКС_ФАЙЛ + 1), "big.bin", "ПДн")
+
+
 class ТестыFailClosedСейфа(unittest.TestCase):
     def test_без_шифрования_отказ_и_файл_не_пишется(self):
         with tempfile.TemporaryDirectory() as папка, \

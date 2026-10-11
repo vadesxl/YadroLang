@@ -1,5 +1,6 @@
 import os
 import unittest
+from unittest import mock
 from src.runtime import exposure as E, services as S
 
 NETSTAT = """
@@ -161,6 +162,63 @@ class ТестыЭкспозиции(unittest.TestCase):
     def test_parse_services(self):
         т = '"svchost.exe","37212","W32Time"\n"System","4","N/A"\n"svchost.exe","1808","RpcEptMapper,RpcSs"\n'
         self.assertEqual({37212: ["W32Time"], 1808: ["RpcEptMapper", "RpcSs"]}, E.parse_services(т))
+
+    # ---- что можно сделать с портом ----
+    def test_действия_для_smb_ollama_и_системы(self):
+        from src.runtime import remedy as R
+        smb = E.Listener("TCP", "0.0.0.0", 445, 4, process="System")
+        E.assess(smb)
+        self.assertEqual(["block_port", "disable_service", "trust"], R.actions_for(smb, False, False))
+        self.assertIn("shared folders", R.what_breaks(smb))
+        self.assertEqual("sharing", R.settings_for(smb))
+        ollama = E.Listener("TCP", "0.0.0.0", 11434, 701, process="ollama.exe")
+        E.assess(ollama)
+        self.assertEqual(["unblock", "stop_program", "show_file", "untrust"], R.actions_for(ollama, True, True))
+        rpc = E.Listener("TCP", "0.0.0.0", 135, 1808, process="svchost.exe", services=["RpcSs"])
+        E.assess(rpc)
+        self.assertNotIn("stop_program", R.actions_for(rpc, False, False))   # Windows не убиваем
+        local = E.Listener("TCP", "127.0.0.1", 18434, 9, process="llama-server.exe")
+        E.assess(local)
+        self.assertNotIn("block_port", R.actions_for(local, False, False))
+
+    def test_действия_проверяют_ввод_и_живой_порт(self):
+        from src.runtime import remedy as R
+        with mock.patch.object(R.E, "_run", return_value=""), mock.patch.object(R.os, "name", "nt"):
+            for плохой in (("block_port", "ICMP", 1, 1), ("block_port", "TCP", 70000, 1), ("trust", "TCP", "x", 1)):
+                with self.assertRaises(R.RemedyError):
+                    R.run(*плохой)
+            with self.assertRaises(R.RemedyError):           # порт уже не слушается
+                R.run("block_port", "TCP", 445, 4)
+
+    def test_блокировка_идёт_через_uac_и_отменяется(self):
+        import tempfile
+        from src.runtime import remedy as R
+        живой = E.Listener("TCP", "0.0.0.0", 5432, 700, process="postgres.exe")
+        живой.reach = "all_networks"
+        скрипты = []
+        with tempfile.TemporaryDirectory() as д, mock.patch.dict(os.environ, {"YADRO_GUARD_HOME": д}), \
+                mock.patch.object(R, "_live", return_value=живой), mock.patch.object(R.os, "name", "nt"), \
+                mock.patch.object(R, "_elevated", side_effect=скрипты.append):
+            р = R.run("block_port", "TCP", 5432, 700)
+            self.assertIn("New-NetFirewallRule -Name 'YadroGuard-Block-TCP-5432'", скрипты[0])
+            self.assertIn("-LocalPort 5432", скрипты[0])
+            self.assertEqual({"YadroGuard-Block-TCP-5432"}, R.guard_rules())
+            R.undo(р["fix"])
+            self.assertIn("Remove-NetFirewallRule -Name 'YadroGuard-Block-TCP-5432'", скрипты[1])
+            self.assertEqual(set(), R.guard_rules())
+            with self.assertRaises(R.RemedyError):
+                R.undo(р["fix"])                              # дважды не откатывается
+            R.run("trust", "TCP", 5432, 700)
+            self.assertIn("TCP:5432:postgres.exe", R.trusted())
+            self.assertEqual(1, len(скрипты) - 1)             # доверие не трогает систему
+
+    def test_отмена_uac_честно(self):
+        from src.runtime import remedy as R
+        class Р:
+            returncode = 1223
+        with mock.patch.object(R.subprocess, "run", return_value=Р()):
+            with self.assertRaisesRegex(R.RemedyError, "cancelled"):
+                R._elevated("Get-Date")
 
     @unittest.skipUnless(os.name == "nt", "Windows only")
     def test_живой_скан_этой_машины(self):
