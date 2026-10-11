@@ -1,0 +1,6 @@
+# Hermes agent-plugin manifest. Folder MUST be named "yadro-guard".
+name: yadro-guard
+label: Guard
+description: Yadro Guard — offline leak prover, autofix and quarantine vault status for AI-agent code.
+version: 0.1.0
+manifest_version: 1

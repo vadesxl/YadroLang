@@ -1,0 +1,14 @@
+{
+  "name": "yadro-guard",
+  "label": "Guard",
+  "description": "Yadro Guard: proves and fixes sensitive-data leaks in AI-agent code before it runs. Offline.",
+  "icon": "Shield",
+  "version": "0.1.0",
+  "tab": {
+    "path": "/guard",
+    "position": "after:home"
+  },
+  "entry": "dist/index.js",
+  "css": "dist/style.css",
+  "api": "plugin_api.py"
+}
