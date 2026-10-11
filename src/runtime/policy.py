@@ -81,7 +81,10 @@ def _destination(tool_name: str, args: Any) -> str:
                 return v[:160]
         cmd = args.get("command") or args.get("cmd")
         if isinstance(cmd, str) and cmd:
-            return "shell: " + cmd.split()[0][:60]
+            import re
+            url = re.search(r"\b(?:https?|ftp|wss?)://[^\s\"'<>]+", cmd)
+            prog = cmd.split()[0][:60]
+            return f"{url.group(0)[:140]} (via {prog})" if url else "shell: " + prog
     return tool_name
 
 
