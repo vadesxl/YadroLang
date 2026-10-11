@@ -29,7 +29,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from src.runtime import detectors
+from . import detectors
 
 MAX_INCIDENTS = 500
 DECISION_TTL = 7 * 24 * 3600     # a saved decision is valid for a week
@@ -88,7 +88,7 @@ def _destination(tool_name: str, args: Any) -> str:
 def _known_secrets():
     """(value, label, title) for secrets in the vault — exact-match detection."""
     try:
-        from src import vault
+        from .. import vault
         return vault.known_values()
     except Exception:
         return []
@@ -203,7 +203,7 @@ def _quarantine(findings: List[detectors.Finding]) -> List[Dict[str, Any]]:
     The journal only ever keeps the token, never the value."""
     out = []
     try:
-        from src import vault
+        from .. import vault
     except Exception:
         vault = None
     for f in findings:

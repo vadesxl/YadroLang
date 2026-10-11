@@ -165,6 +165,48 @@ async def vault_put(body: "SecretBody") -> Dict[str, Any]:
     return await asyncio.to_thread(_engine, ["src.vault", "put-json"], {"secret": secret, "label": label})
 
 
+class DecisionBody(BaseModel):
+    incident: str
+    choice: str
+
+
+def _policy():
+    """Same in-process policy module the runtime hook uses, under a unique package name."""
+    import importlib.util
+    import sys
+    loader_name = "yadro_guard_engine_loader"
+    try:
+        if loader_name not in sys.modules:
+            spec = importlib.util.spec_from_file_location(loader_name, PLUGIN_DIR / "engine_loader.py")
+            mod = importlib.util.module_from_spec(spec)
+            sys.modules[loader_name] = mod
+            spec.loader.exec_module(mod)
+        return sys.modules[loader_name].load_policy()
+    except Exception:
+        return None
+
+
+@router.get("/incidents")
+async def incidents() -> Dict[str, Any]:
+    pol = _policy()
+    if pol is None:
+        return _error("Yadro Guard is not set up yet.")
+    items = await asyncio.to_thread(pol.list_incidents, 100)
+    return {"status": "ok", "items": items,
+            "pending": sum(1 for i in items if i.get("status") == "pending")}
+
+
+@router.post("/incidents/decide")
+async def decide(body: "DecisionBody") -> Dict[str, Any]:
+    pol = _policy()
+    if pol is None:
+        return _error("Yadro Guard is not set up yet.")
+    incident, choice = str(getattr(body, "incident", ""))[:32], str(getattr(body, "choice", ""))
+    if choice not in ("protect", "block", "allow"):
+        return _error("Unknown choice.")
+    return await asyncio.to_thread(pol.decide, incident, choice)
+
+
 @router.get("/health")
 async def health() -> Dict[str, Any]:
     cfg = _config()
