@@ -116,7 +116,7 @@
   const SAMPLE = "fn main() requires [NetworkAccess] {\n  let key = env.secret()\n  return net.send(key)\n}\n";
 
   function CheckPanel() {
-    const [code, setCode] = useState("");
+    const [code, setCode] = useState(SAMPLE);   // prefilled so "Check code" works on first click
     const [title, setTitle] = useState("");
     const [busy, setBusy] = useState(false);
     const [r, setR] = useState(null);
@@ -134,14 +134,19 @@
         "Guard proves where sensitive data can leak, before the code ever runs."),
       h("input", { className: "yg-input", placeholder: "Name (optional), e.g. payment agent", value: title,
         onChange: function (e) { setTitle(e.target.value); } }),
-      h("textarea", { className: "yg-code-in", spellCheck: false, placeholder: SAMPLE, value: code,
+      h("textarea", { className: "yg-code-in", spellCheck: false, placeholder: "Paste YadroLang code here", value: code,
         onChange: function (e) { setCode(e.target.value); } }),
       h("div", { className: "yg-actions" },
         h("button", { className: "yg-btn", disabled: busy || !code.trim(), onClick: analyze }, busy ? "Checking…" : "Check code"),
         h("button", { className: "yg-btn ghost", onClick: function () { setCode(SAMPLE); setR(null); } }, "Load example"),
         r && r.status !== "error" ? h("button", { className: "yg-btn ghost", onClick: openReport }, "Open full report") : null),
       r ? h(Result, { r: r, onFix: applyFix }) : null,
-      report ? h("div", { className: "yg-modal", onClick: function () { setReport(""); } },
+      // Inline, not a fixed modal: cards use backdrop-filter, which makes position:fixed
+      // relative to the card, so a modal got clipped (seen in Hermes Desktop).
+      report ? h("div", { className: "yg-report" },
+        h("div", { className: "yg-actions" },
+          h("span", { className: "yg-sub" }, "Full report"),
+          h("button", { className: "yg-btn ghost yg-right", onClick: function () { setReport(""); } }, "Close report")),
         h("iframe", { className: "yg-frame", sandbox: "", srcDoc: report, title: "report" })) : null);
   }
 
@@ -228,16 +233,31 @@
         showSafe ? safe.map(function (l, i) { return h(PortRow, { key: i, l: l, compact: true }); }) : null));
   }
 
+  function addrText(l) {
+    const a = l.addresses && l.addresses.length ? l.addresses : [l.address];
+    return a.map(function (x) { return x === "::" ? "[::]" : x; }).join(" + ");
+  }
+  const FW_TEXT = { allowed: "firewall lets it in", blocked: "firewall blocks it", off: "firewall is OFF",
+    "not verified": "firewall: not verified", "not needed": "" };
+  const FW_SCOPE = { everyone: "from anyone", "local network": "from your local network only",
+    "some addresses": "from some addresses", "default": "by default", "group policy": "(managed by your organisation)" };
+  function fwText(l) {
+    let t = FW_TEXT[l.firewall] != null ? FW_TEXT[l.firewall] : "firewall: " + l.firewall;
+    if (l.firewall_scope && FW_SCOPE[l.firewall_scope]) t += " " + FW_SCOPE[l.firewall_scope];
+    if (l.firewall_rule) t += " (rule \u201c" + l.firewall_rule + "\u201d)";
+    return t;
+  }
+
   function PortRow(p) {
     const l = p.l, s = SEV[l.severity] || ["?", "warn"];
     return h("div", { className: "yg-inc " + (l.severity === "critical" || l.severity === "high" ? "pending" : "done") },
       h("div", { className: "yg-inc-top" },
         h(Pill, { kind: s[1] }, s[0]),
         h("b", null, l.service),
-        h("span", { className: "yg-dim yg-right yg-mono" }, l.proto + " " + l.address + ":" + l.port)),
+        h("span", { className: "yg-dim yg-right yg-mono" }, l.proto + " " + addrText(l) + " port " + l.port)),
       h("div", { className: "yg-inc-story" },
         h("b", { className: "yg-mono" }, l.process), " (pid " + l.pid + ") · " + (REACH[l.reach] || l.reach) +
-        (l.reach === "this_computer" ? "" : " · firewall: " + l.firewall),
+        (l.reach === "this_computer" ? "" : " · " + fwText(l)),
         (l.tags || []).indexOf("public-tunnel") >= 0 ? h("span", { className: "yg-err" }, " · public internet tunnel") : null),
       p.compact ? null : h("div", { className: "yg-dim" }, l.why),
       p.compact || l.fix === "Nothing to do." ? null : h("div", { className: "yg-ok yg-small" }, "What to do: " + l.fix));
@@ -267,8 +287,13 @@
         "and never shown again here. Guard blocks any agent that tries to send it."),
       h("input", { className: "yg-input", type: "password", autoComplete: "off", placeholder: "Paste the secret value",
         value: secret, onChange: function (e) { setSecret(e.target.value); } }),
-      h("select", { className: "yg-input", value: label, onChange: function (e) { setLabel(e.target.value); } },
-        KINDS.map(function (k) { return h("option", { key: k[0], value: k[0] }, k[1]); })),
+      // Buttons instead of a native <select>: its dropdown is drawn by the OS (white list,
+      // blue text) and ignores the dark theme.
+      h("div", { className: "yg-kinds", role: "radiogroup", "aria-label": "Kind of secret" },
+        KINDS.map(function (k) {
+          return h("button", { key: k[0], type: "button", role: "radio", "aria-checked": label === k[0],
+            className: "yg-kind" + (label === k[0] ? " on" : ""), onClick: function () { setLabel(k[0]); } }, k[1]);
+        })),
       h("div", { className: "yg-actions" },
         h("button", { className: "yg-btn", disabled: busy || !secret, onClick: save }, busy ? "Encrypting…" : "Protect this secret")),
       msg ? h("div", { className: msg.ok ? "yg-ok yg-small" : "yg-err yg-small" }, msg.text) : null,

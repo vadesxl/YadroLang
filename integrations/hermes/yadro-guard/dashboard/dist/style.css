@@ -98,5 +98,11 @@ select.yg-input { appearance: auto; }
 .yg-gaps ul { margin: 6px 0 0; padding-left: 18px; }
 .yg-foot { margin-top: 18px; font-size: 10.5px; color: var(--color-muted-foreground, #7d8496); }
 .yg-risk { margin: 6px 0; padding: 8px 10px; border-left: 3px solid var(--yg-bad); background: color-mix(in srgb, var(--yg-bad) 6%, transparent); border-radius: 4px; }
-.yg-modal { position: fixed; inset: 0; background: rgb(0 0 0 / .65); z-index: 80; display: flex; align-items: center; justify-content: center; }
-.yg-frame { width: min(1040px, 92vw); height: 86vh; border: 1px solid var(--yg-border); border-radius: 10px; background: #0b0e14; }
+.yg-report { margin-top: 12px; }
+.yg-frame { display: block; width: 100%; height: 75vh; min-height: 420px; border: 1px solid var(--yg-border); border-radius: 10px; background: #0b0e14; }
+.yg-kinds { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.yg-kind { background: transparent; color: inherit; border: 1px solid var(--yg-border); border-radius: 999px;
+  padding: 5px 12px; font: inherit; font-size: 11px; cursor: pointer; }
+.yg-kind:hover { border-color: var(--yg-accent); }
+.yg-kind.on { background: var(--yg-accent); color: #000; border-color: var(--yg-accent); font-weight: 700; }
+.yg-root { color-scheme: dark; }

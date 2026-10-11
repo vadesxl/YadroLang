@@ -79,6 +79,89 @@ class ТестыЭкспозиции(unittest.TestCase):
         self.assertEqual(S.INFO, л.severity)
         self.assertEqual("Nothing to do.", л.fix)
 
+    # ---- брандмауэр: вердикт из локальной политики ----
+    @staticmethod
+    def _fw(rules, default_in=(1, 1, 1), current=2, enabled=(True, True, True), modify=0, block_all=(False,) * 3):
+        return {"current": current, "modify_state": modify, "enabled": list(enabled),
+                "default_in": list(default_in), "block_all": list(block_all), "rules": rules, "paths": {}}
+
+    @staticmethod
+    def _rule(**kw):
+        r = {"name": "r", "action": 1, "protocol": 6, "ports": "*", "app": None, "service": None,
+             "profiles": 2147483647, "remote": "*", "local": "*", "ifaces": "All", "group": None, "package": False}
+        r.update(kw)
+        return r
+
+    def _l(self, port=5432, proto="TCP", process="postgres.exe"):
+        return E.Listener(proto, "0.0.0.0", port, 700, process=process)
+
+    def test_fw_правило_программы_по_пути_разрешает(self):
+        fw = self._fw([self._rule(name="PG", app=r"C:\PG\postgres.exe", remote="LocalSubnet")])
+        v = E.firewall_verdict(self._l(), fw, [], r"c:\pg\POSTGRES.exe")
+        self.assertEqual(("allowed", "PG", "local network"), v)
+
+    def test_fw_чужая_программа_не_считается(self):
+        fw = self._fw([self._rule(app=r"C:\Other\x.exe")], default_in=(0, 0, 0))
+        self.assertEqual("blocked", E.firewall_verdict(self._l(), fw, [], r"C:\PG\postgres.exe")[0])
+
+    def test_fw_по_умолчанию_блок_без_правил(self):
+        self.assertEqual(("blocked", "", "default"), E.firewall_verdict(self._l(), self._fw([], (0, 0, 0)), [], ""))
+
+    def test_fw_выключен_и_групповая_политика(self):
+        self.assertEqual("off", E.firewall_verdict(self._l(), self._fw([], enabled=(True, False, True)), [], "")[0])
+        self.assertEqual("not verified", E.firewall_verdict(self._l(), self._fw([], modify=1), [], "")[0])
+        self.assertEqual("not verified", E.firewall_verdict(self._l(), None, [], "")[0])
+
+    def test_fw_блок_с_ограничениями_не_выдаётся_за_блок(self):
+        # блок только для части адресов (как правило песочницы) -> честно "not verified"
+        fw = self._fw([self._rule(action=0, protocol=256, ports=None, remote="0.0.0.0-126.255.255.255")], (0, 0, 0))
+        self.assertEqual("not verified", E.firewall_verdict(self._l(), fw, [], "")[0])
+
+    def test_fw_ключевые_слова_портов_и_wfd_не_решают(self):
+        fw = self._fw([self._rule(app="System", ports="IPHTTPS"),
+                       self._rule(app="System", group="@wlansvc.dll,-36865")], (0, 0, 0))
+        self.assertEqual("not verified", E.firewall_verdict(self._l(445, process="System"), fw, [], "")[0])
+
+    def test_fw_правило_store_приложений_не_касается_обычных_программ(self):
+        fw = self._fw([self._rule(name="Xbox", protocol=256, package=True)], (0, 0, 0))
+        self.assertEqual("blocked", E.firewall_verdict(self._l(), fw, [], r"C:\PG\postgres.exe")[0])
+
+    def test_fw_служба_и_диапазон_портов(self):
+        fw = self._fw([self._rule(name="NTP", protocol=17, ports="100-200", service="W32Time")], (0, 0, 0))
+        л = self._l(123, "UDP", "svchost.exe")
+        self.assertEqual("allowed", E.firewall_verdict(л, fw, ["W32Time"], "")[0])
+        self.assertEqual("blocked", E.firewall_verdict(л, fw, ["Dnscache"], "")[0])
+
+    # ---- IPv4 + IPv6 в одной строке, svchost по имени службы ----
+    def test_ipv4_и_ipv6_сливаются(self):
+        л = E.parse_netstat(NETSTAT)
+        for x in л:
+            x.process = "System"
+            E.assess(x)
+        слитые = [x for x in E.merge_dual_stack(л) if x.port == 445]
+        self.assertEqual(1, len(слитые))
+        self.assertEqual(["0.0.0.0", "::"], слитые[0].addresses)
+
+    def test_слияние_берёт_худший_вердикт(self):
+        a, b = self._l(), self._l()
+        b.address = "::"
+        a.firewall, b.firewall, b.firewall_rule = "blocked", "allowed", "X"
+        for x in (a, b):
+            E.assess(x)
+        м = E.merge_dual_stack([a, b])
+        self.assertEqual(1, len(м))
+        self.assertEqual(("allowed", "X"), (м[0].firewall, м[0].firewall_rule))
+
+    def test_svchost_123_это_служба_времени(self):
+        л = E.Listener("UDP", "0.0.0.0", 123, 37212, process="svchost.exe", services=["W32Time"])
+        E.assess(л)
+        self.assertEqual("Windows Time (NTP)", л.service)
+        self.assertEqual(S.INFO, л.severity)
+
+    def test_parse_services(self):
+        т = '"svchost.exe","37212","W32Time"\n"System","4","N/A"\n"svchost.exe","1808","RpcEptMapper,RpcSs"\n'
+        self.assertEqual({37212: ["W32Time"], 1808: ["RpcEptMapper", "RpcSs"]}, E.parse_services(т))
+
     @unittest.skipUnless(os.name == "nt", "Windows only")
     def test_живой_скан_этой_машины(self):
         р = E.scan(with_firewall=False)

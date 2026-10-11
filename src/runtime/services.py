@@ -101,6 +101,19 @@ PROCESSES = {
                 "If you never print to or from other computers, disable the Print Spooler service."),
 }
 
+# Windows services hosted in svchost.exe (from `tasklist /SVC`), lowercase name ->
+# (ports it normally uses, service, category, severity_if_exposed, why, how_to_fix).
+WINDOWS_SERVICES = {
+    "w32time": ({123}, "Windows Time (NTP)", "system", INFO,
+                "Windows keeps the clock in sync with time servers. It is not a server others can log into.",
+                "Nothing to do."),
+    "dosvc": ({7680}, "Windows Update delivery optimization", "system", INFO,
+              "Shares Windows updates with other PCs on your network.",
+              "Optional: Settings, Windows Update, Delivery Optimization, turn off downloads from other PCs."),
+    "cdpsvc": ({5040, 5050}, "Connected Devices Platform", "system", INFO,
+               "Lets Windows talk to your phone and other devices nearby.", "Nothing to do."),
+}
+
 # Ports Windows itself uses; shown, but not alarming on a private network.
 WINDOWS_SYSTEM = {135, 5040, 5357, 7680} | set(range(49664, 49700))
 # UDP network-discovery / VPN-negotiation ports used by Windows and browsers.
