@@ -25,7 +25,9 @@ _WORDLIST_FILE = Path(__file__).resolve().parent / "data" / "bip39_english.txt"
 
 
 def _load_wordlist():
-    raw = _WORDLIST_FILE.read_bytes()
+    # Normalise line endings first: git/zip on Windows may turn LF into CRLF, which must
+    # not change the verdict (a false integrity failure would block every agent action).
+    raw = _WORDLIST_FILE.read_bytes().replace(b"\r\n", b"\n")
     if hashlib.sha256(raw).hexdigest() != _WORDLIST_SHA256:
         raise RuntimeError("BIP39 word list failed its integrity check")
     words = raw.decode("ascii").split()

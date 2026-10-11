@@ -80,6 +80,16 @@ class ТестыКриптоДетекторов(unittest.TestCase):
             журнал = (policy.home() / "incidents.json").read_text(encoding="utf-8")
             self.assertNotIn(SEED12, журнал)                              # фраза не пишется в журнал
 
+    def test_crlf_в_списке_слов_не_ломает_проверку(self):
+        import shutil
+        from pathlib import Path
+        tmp = Path(tempfile.mkdtemp()) / "bip39_english.txt"
+        shutil.copy(C._WORDLIST_FILE, tmp)
+        tmp.write_bytes(tmp.read_bytes().replace(b"\n", b"\r\n"))
+        with mock.patch.object(C, "_WORDLIST_FILE", tmp):
+            words, _ = C._load_wordlist()
+        self.assertEqual(2048, len(words))
+
     def test_подмена_списка_слов_ломает_загрузку(self):
         with mock.patch.object(C, "_WORDLIST_SHA256", "0" * 64):
             with self.assertRaises(RuntimeError):

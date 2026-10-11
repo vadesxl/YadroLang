@@ -1,0 +1,2 @@
+# Data files whose bytes are pinned by SHA-256 must never be rewritten by git.
+src/runtime/data/*.txt -text
