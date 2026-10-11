@@ -1,29 +1,28 @@
-"""Yadro Guard — backend плагина для дашборда Hermes.
+"""Yadro Guard — Hermes dashboard plugin backend (mounted at /api/plugins/yadro-guard/).
 
-Монтируется Hermes по адресу /api/plugins/yadro-guard/.
-Движок запускается ОТДЕЛЬНЫМ процессом (свой Python с llvmlite), поэтому:
-- Hermes не зависит от зависимостей движка;
-- сбой/зависание движка не роняет Hermes (жёсткий таймаут);
-- наружу отдаётся только JSON движка.
-
-Безопасность:
-- только файлы .яд/.yad/.yd (проверяет и движок);
-- секреты из сейфа через веб НИКОГДА не выдаются — только метаданные;
-- история сканов хранит лишь путь, вердикт и время.
+Design:
+- The analysis engine runs in a SEPARATE process (its own Python with llvmlite)
+  with a hard timeout, so an engine failure can never take Hermes down.
+- Code and secrets reach the engine through stdin, never through process
+  arguments (those are visible to other processes and logs).
+- Fail-closed: any engine problem is reported as an error, never as "clean".
+- The vault never returns secret values over HTTP: only token metadata.
+- History stores titles, verdicts and labels only, never the code itself.
 """
 from __future__ import annotations
 
 import asyncio
 import json
+import os
 import subprocess
 import time
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 try:
     from fastapi import APIRouter
     from pydantic import BaseModel
-except Exception:  # pragma: no cover - для локальных тестов без FastAPI
+except Exception:  # pragma: no cover - local tests without FastAPI
     class APIRouter:  # type: ignore
         def get(self, *_a, **_k):
             return lambda fn: fn
@@ -41,8 +40,11 @@ PLUGIN_DIR = Path(__file__).resolve().parent.parent
 CONFIG_FILE = PLUGIN_DIR / "config.json"
 HISTORY_FILE = PLUGIN_DIR / "history.json"
 TIMEOUT_S = 60
-ALLOWED = {".яд", ".yad", ".yd"}
+MAX_CODE = 200_000
+MAX_SECRET = 4_096
 MAX_HISTORY = 30
+LABELS = ("PII", "Financial", "Health", "Credentials", "Location")
+ENGINE_ENV = {"PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
 
 
 def _config() -> Dict[str, str]:
@@ -52,35 +54,29 @@ def _config() -> Dict[str, str]:
         return {}
 
 
-def _engine(*args: str) -> Dict[str, Any]:
+def _error(message: str) -> Dict[str, Any]:
+    return {"status": "error", "message": message}
+
+
+def _engine(args: List[str], stdin_obj: Dict[str, Any] | None = None) -> Dict[str, Any]:
     cfg = _config()
     home, python = cfg.get("engine_home"), cfg.get("python")
-    if not home or not python:
-        return {"status": "error", "message": "плагин не настроен: запустите install.ps1"}
-    env = {"PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
-    import os
-    full_env = {**os.environ, **env}
+    if not home or not python or not Path(home).is_dir():
+        return _error("Yadro Guard is not set up yet. Run the installer once, then reload Hermes.")
     try:
-        res = subprocess.run([python, "-m", *args], cwd=home, env=full_env, capture_output=True,
-                             text=True, encoding="utf-8", timeout=TIMEOUT_S)
+        res = subprocess.run([python, "-m", *args], cwd=home, capture_output=True, text=True,
+                             encoding="utf-8", timeout=TIMEOUT_S,
+                             input=json.dumps(stdin_obj) if stdin_obj is not None else "",
+                             env={**os.environ, **ENGINE_ENV})
     except subprocess.TimeoutExpired:
-        return {"status": "error", "message": f"движок не ответил за {TIMEOUT_S}s"}
-    except OSError as e:
-        return {"status": "error", "message": f"не удалось запустить движок: {e.strerror}"}
+        return _error(f"The analyzer did not answer within {TIMEOUT_S} seconds.")
+    except OSError:
+        return _error("The analyzer could not be started. Check the Python path in config.json.")
+    out = res.stdout.strip()
     try:
-        return json.loads(res.stdout.strip().splitlines()[-1]) if res.stdout.strip() else \
-            {"status": "error", "message": "движок вернул пустой ответ"}
+        return json.loads(out.splitlines()[-1]) if out else _error("The analyzer returned nothing.")
     except (json.JSONDecodeError, IndexError):
-        return {"status": "error", "message": "движок вернул не-JSON"}
-
-
-def _check_path(path: str) -> str | None:
-    p = Path(path)
-    if not p.is_absolute():
-        return "укажите полный путь к файлу"
-    if p.suffix.lower() not in ALLOWED:
-        return f"поддерживаются только {sorted(ALLOWED)}"
-    return None
+        return _error("The analyzer returned an unreadable answer.")
 
 
 def _history() -> list:
@@ -91,41 +87,58 @@ def _history() -> list:
         return []
 
 
-def _remember(path: str, result: Dict[str, Any]) -> None:
-    item = {"path": path, "status": result.get("status"), "code": result.get("code"),
+def _remember(title: str, result: Dict[str, Any]) -> None:
+    item = {"title": (title or "untitled")[:80], "status": result.get("status"),
             "labels": [l.get("label") for l in result.get("labels", [])], "at": int(time.time())}
-    items = [h for h in _history() if h.get("path") != path]
-    items.insert(0, item)
-    HISTORY_FILE.write_text(json.dumps(items[:MAX_HISTORY], ensure_ascii=False), encoding="utf-8")
+    items = [item] + [h for h in _history() if h.get("title") != item["title"]]
+    try:
+        HISTORY_FILE.write_text(json.dumps(items[:MAX_HISTORY], ensure_ascii=False), encoding="utf-8")
+    except OSError:
+        pass
 
 
-class PathBody(BaseModel):
-    path: str
+class CodeBody(BaseModel):
+    code: str
+    title: str = ""
 
 
-async def _run(cmd: str, path: str) -> Dict[str, Any]:
-    err = _check_path(path)
-    if err:
-        return {"status": "error", "message": err}
-    return await asyncio.to_thread(_engine, "src.guard_api", cmd, path)
+class SecretBody(BaseModel):
+    secret: str
+    label: str
 
 
-@router.post("/scan")
-async def scan(body: "PathBody") -> Dict[str, Any]:
-    result = await _run("scan", body.path)
+def _check_code(code: Any) -> str | None:
+    if not isinstance(code, str) or not code.strip():
+        return "Paste some code first."
+    if len(code.encode("utf-8")) > MAX_CODE:
+        return "This code is too large (limit 200 KB)."
+    return None
+
+
+async def _code_call(cmd: str, body: "CodeBody") -> Dict[str, Any]:
+    problem = _check_code(getattr(body, "code", None))
+    if problem:
+        return _error(problem)
+    return await asyncio.to_thread(_engine, ["src.guard_api", cmd, "--stdin", "--lang", "en"],
+                                   {"code": body.code})
+
+
+@router.post("/analyze")
+async def analyze(body: "CodeBody") -> Dict[str, Any]:
+    result = await _code_call("analyze", body)
     if result.get("status") in ("ok", "leak"):
-        _remember(body.path, result)
+        _remember(getattr(body, "title", "") or body.code.strip().splitlines()[0], result)
     return result
 
 
-@router.post("/fix")
-async def fix(body: "PathBody") -> Dict[str, Any]:
-    return await _run("fix", body.path)
+@router.post("/autofix")
+async def autofix(body: "CodeBody") -> Dict[str, Any]:
+    return await _code_call("autofix", body)
 
 
 @router.post("/report")
-async def report(body: "PathBody") -> Dict[str, Any]:
-    return await _run("report", body.path)
+async def report(body: "CodeBody") -> Dict[str, Any]:
+    return await _code_call("report-text", body)
 
 
 @router.get("/history")
@@ -135,22 +148,21 @@ async def history() -> Dict[str, Any]:
 
 @router.get("/vault")
 async def vault() -> Dict[str, Any]:
-    """Только метаданные сейфа (токен, метка, время). Значения не выдаются."""
-    cfg = _config()
-    if not cfg.get("engine_home"):
-        return {"status": "error", "message": "плагин не настроен"}
+    """Token metadata only. Secret values are never sent over HTTP."""
+    result = await asyncio.to_thread(_engine, ["src.vault", "list-json"])
+    return result
 
-    def _list():
-        import os
-        try:
-            res = subprocess.run([cfg["python"], "-m", "src.vault", "list"], cwd=cfg["engine_home"],
-                                 env={**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"},
-                                 capture_output=True, text=True, encoding="utf-8", timeout=TIMEOUT_S)
-            return {"status": "ok", "items": json.loads(res.stdout or "[]")}
-        except Exception:
-            return {"status": "error", "message": "сейф недоступен"}
 
-    return await asyncio.to_thread(_list)
+@router.post("/vault")
+async def vault_put(body: "SecretBody") -> Dict[str, Any]:
+    secret, label = getattr(body, "secret", ""), getattr(body, "label", "")
+    if not isinstance(secret, str) or not secret:
+        return _error("Enter the secret value.")
+    if len(secret) > MAX_SECRET:
+        return _error("This secret is too long (limit 4 KB).")
+    if label not in LABELS:
+        return _error("Choose what kind of data this is.")
+    return await asyncio.to_thread(_engine, ["src.vault", "put-json"], {"secret": secret, "label": label})
 
 
 @router.get("/health")

@@ -131,8 +131,41 @@ def забыть(токен: str) -> bool:
     return было
 
 
+LABELS_EN = {"PII": "ПДн", "Financial": "Финансы", "Health": "Здоровье",
+             "Credentials": "УчетныеДанные", "Location": "Локация"}
+
+
+def положить_json():
+    """Для интеграций: JSON {"secret": "...", "label": "Credentials"|"УчетныеДанные"} в stdin.
+
+    Секрет передаётся только через stdin (не через аргументы процесса, не в лог).
+    Ответ: {"status": "ok", "token": ..., "label": ...} или {"status": "error", "message": ...}.
+    """
+    try:
+        данные = json.loads(sys.stdin.read() or "{}")
+        метка = LABELS_EN.get(данные.get("label", ""), данные.get("label", ""))
+        токен = положить(str(данные.get("secret", "")), метка)
+        return {"status": "ok", "token": токен, "label": данные.get("label")}
+    except ОшибкаСейфа as e:
+        return {"status": "error", "message": str(e)}
+    except (ValueError, TypeError):
+        return {"status": "error", "message": "bad request"}
+
+
 def main(argv=None):
     import argparse
+    args = list(sys.argv[1:] if argv is None else argv)
+    if args == ["put-json"]:
+        результат = положить_json()
+        print(json.dumps(результат, ensure_ascii=False))
+        return 0 if результат["status"] == "ok" else 3
+    if args == ["list-json"]:
+        try:
+            print(json.dumps({"status": "ok", "items": список()}, ensure_ascii=False))
+            return 0
+        except (ОшибкаСейфа, ValueError, OSError):
+            print(json.dumps({"status": "error", "message": "The vault is not available."}))
+            return 3
     p = argparse.ArgumentParser(prog="yadro-guard vault")
     sub = p.add_subparsers(dest="cmd", required=True)
     put = sub.add_parser("put"); put.add_argument("--label", required=True)
@@ -140,7 +173,7 @@ def main(argv=None):
     get.add_argument("--i-have-mandate", action="store_true"); get.add_argument("--reason", default="")
     sub.add_parser("list")
     fg = sub.add_parser("forget"); fg.add_argument("token")
-    a = p.parse_args(argv)
+    a = p.parse_args(args)
     try:
         if a.cmd == "put":
             секрет = sys.stdin.read().rstrip("\r\n")  # не из аргументов: не светится в истории команд

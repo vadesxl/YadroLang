@@ -1,4 +1,4 @@
-# Устанавливает плагин Yadro Guard в дашборд Hermes.
+﻿# Устанавливает плагин Yadro Guard в дашборд Hermes.
 # Запуск: powershell -ExecutionPolicy Bypass -File integrations\hermes\install.ps1
 # Что делает: копирует плагин в %LOCALAPPDATA%\hermes\plugins\yadro-guard,
 # пишет config.json (путь к движку и к Python с llvmlite), включает плагин.

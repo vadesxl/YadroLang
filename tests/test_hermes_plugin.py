@@ -27,8 +27,8 @@ class ТестыПлагинаHermes(unittest.TestCase):
             json.dumps({"engine_home": str(КОРЕНЬ), "python": sys.executable}), encoding="utf-8")
         self.api = _загрузить_api(self.папка)
 
-    def тело(self, путь):
-        return self.api.PathBody(path=путь)
+    def тело(self, код, title=""):
+        return self.api.CodeBody(code=код, title=title)
 
     def test_манифест_как_у_hermes(self):
         м = json.loads((ПЛАГИН / "dashboard" / "manifest.json").read_text(encoding="utf-8"))
@@ -38,23 +38,24 @@ class ТестыПлагинаHermes(unittest.TestCase):
         for файл in (м["entry"], м["css"], м["api"]):
             self.assertTrue((ПЛАГИН / "dashboard" / файл).exists(), файл)
 
-    def test_scan_через_бэкенд_и_история(self):
-        прог = self.папка / "leak.яд"
-        прог.write_text("функ старт() требует [ДоступСети] { вернуть сеть.отправить(среда.секрет()) }", encoding="utf-8")
-        р = asyncio.run(self.api.scan(self.тело(str(прог))))
+    def test_анализ_вставленного_кода_и_история_без_кода(self):
+        код = "fn main() requires [NetworkAccess] {\n  let key = env.secret()\n  return net.send(key)\n}"
+        р = asyncio.run(self.api.analyze(self.тело(код, "payment agent")))
         self.assertEqual("leak", р["status"])
-        self.assertEqual("Учётные данные и ключи", р["labels"][0]["label"])
+        self.assertEqual("Credentials & keys", р["labels"][0]["label"])
+        self.assertTrue(р["autofix"]["verified"])
         история = asyncio.run(self.api.history())["items"]
-        self.assertEqual(str(прог), история[0]["path"])
-        self.assertNotIn("секрет", json.dumps(история, ensure_ascii=False).replace("среда.секрет", ""))
+        self.assertEqual("payment agent", история[0]["title"])
+        self.assertNotIn("env.secret", json.dumps(история))   # сам код в историю не пишется
 
-    def test_отклоняет_чужие_файлы_и_относительные_пути(self):
-        self.assertEqual("error", asyncio.run(self.api.scan(self.тело("C:\\Windows\\win.ini")))["status"])
-        self.assertEqual("error", asyncio.run(self.api.scan(self.тело("leak.яд")))["status"])
+    def test_пустой_код_и_битый_секрет_отклоняются(self):
+        self.assertEqual("error", asyncio.run(self.api.analyze(self.тело("   ")))["status"])
+        плохой = self.api.SecretBody(secret="x", label="Passwords")
+        self.assertEqual("error", asyncio.run(self.api.vault_put(плохой))["status"])
 
     def test_без_настройки_честная_ошибка(self):
         (self.папка / "config.json").unlink()
-        self.assertEqual("error", asyncio.run(self.api.scan(self.тело("C:\\x.яд")))["status"])
+        self.assertEqual("error", asyncio.run(self.api.analyze(self.тело("fn main() { return 0 }")))["status"])
         self.assertFalse(asyncio.run(self.api.health())["configured"])
 
     def test_фронтенд_без_опасных_конструкций(self):
