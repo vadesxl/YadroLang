@@ -228,6 +228,94 @@ def _чисто(строки, находки):
     return hero, тело
 
 
+ТЕКСТ = {
+    "en": {"leak": "Leak detected", "clean": "No leaks found",
+           "clean_sub": "Every piece of sensitive data is protected or never leaves the program.",
+           "what": "What is leaking", "path": "How the data travels", "line": "line",
+           "src": "source", "sink": "leaks via", "quar": "🛡 Quarantine: how to send it legally",
+           "quar_intro": "If this data really has to leave the program, wrap it first in one of the allowed protections:",
+           "none": "no allowed protection: this data must not leave the program",
+           "fix": "🪄 Automatic fix: before / after", "fix_ok": "✓ verified: the fixed code passes the analyzer",
+           "fix_warn": "⚠ needs manual review", "fix_how": "Wrap the value in",
+           "applied": "Protections applied", "code": "Source code",
+           "gaps": "Honest limits of this version", "gaps_intro": "This analyzer does not catch these leak types yet:",
+           "foot": "Report generated locally. Nothing was sent anywhere.", "title": "report"},
+    "ru": {"leak": "Обнаружена утечка", "clean": "Утечек не найдено",
+           "clean_sub": "Все чувствительные данные защищены или не покидают программу.",
+           "what": "Что утекает", "path": "Путь данных", "line": "строка",
+           "src": "источник", "sink": "утечка через", "quar": "🛡 Карантин — как отправить легально",
+           "quar_intro": "Если эти данные действительно нужно передать наружу, сначала «запечатайте» их:",
+           "none": "нет разрешённой обёртки — данные нельзя выпускать наружу",
+           "fix": "🪄 Автоисправление — было / стало", "fix_ok": "✓ проверено: исправленный код проходит анализатор",
+           "fix_warn": "⚠ требует ручной проверки", "fix_how": "Обернуть значение в",
+           "applied": "Применённые обёртки", "code": "Исходный код",
+           "gaps": "Честные ограничения этой версии", "gaps_intro": "Эти виды утечек анализатор пока не ловит:",
+           "foot": "Отчёт создан локально. Данные никуда не отправлялись.", "title": "отчёт"},
+}
+
+
+def _чип_инфо(и):
+    return (f'<span class="chip" style="background:{_e(и.get("color", "#666"))}">'
+            f'{_e(и.get("icon", ""))} {_e(и.get("label", ""))}</span>')
+
+
+def _тело_утечки(р, строки, Т):
+    узлы = [_узел("src", f'{Т["line"]} {s["line"]}', s["name"] + "()", _чип_инфо(s["label"]))
+            for s in р.get("sources", [])] or [_узел("src", Т["src"], "?", "")]
+    узлы.append(_узел("sink", f'{Т["line"]} {р["line"]}', р["sink"]["name"],
+                      f"<span class='lbl'>{_e(Т['sink'])} {_e(р['sink']['human'])}</span>"))
+    карантин = "".join(
+        f'<div class="row"><div class="k">{_e(q["label"])}</div><div><ul>'
+        + ("".join(f'<li>{_e(o["human"])} — <code>{_e(o["fn"])}(...)</code></li>' for o in q["options"])
+           or f'<li>{_e(Т["none"])}</li>') + "</ul></div></div>" for q in р.get("quarantine", []))
+    ф, фикс = р.get("autofix"), ""
+    if ф:
+        фикс = (f'<h2>{_e(Т["fix"])}</h2><div class="card"><p>{_e(Т["fix_how"])} '
+                f'<code>{_e(ф["wrapper"])}(...)</code> — {_e(ф["wrapper_human"])}. '
+                + (f'<span class="ok-badge">{_e(Т["fix_ok"])}</span>' if ф["verified"]
+                   else f'<span class="warn-badge">{_e(Т["fix_warn"])}</span>')
+                + f'</p>{_diff_строки(ф["before"], ф["after"])}</div>')
+    метки = "".join(f'<span class="chip" style="background:{_e(l["color"])}">{_e(l["icon"])} {_e(l["label"])}'
+                    f'<small>· {_e(l["about"])}</small></span>' for l in р.get("labels", []))
+    hero = (f'<div class="hero bad"><div class="ic">⛔</div><div><h1>{_e(Т["leak"])}</h1>'
+            f'<div class="sub">{_e(р["why"])}</div></div><div class="tag">{_e(р["code"])}</div></div>')
+    тело = (f'<h2>{_e(Т["what"])}</h2><div>{метки}</div>'
+            f'<h2>{_e(Т["path"])}</h2><div class="flow">{"<div class=arrow>→</div>".join(узлы)}</div>'
+            f'<h2>{_e(Т["quar"])}</h2><div class="card">{_e(Т["quar_intro"])}<div class="fix">{карантин}</div></div>'
+            f'{фикс}<h2>{_e(Т["code"])}</h2>'
+            f'{_код(строки, р["line"], {s["line"] for s in р.get("sources", [])})}')
+    return hero, тело
+
+
+def построить_из_результата(путь, исходник, р, версия, lang="en"):
+    """HTML-отчёт из структурированного результата guard_api (en/ru)."""
+    Т = ТЕКСТ[lang]
+    строки = исходник.splitlines()
+    плохо = р["status"] == "leak"
+    if плохо:
+        hero, тело = _тело_утечки(р, строки, Т)
+    else:
+        hero = (f'<div class="hero ok"><div class="ic">✅</div><div><h1>{_e(Т["clean"])}</h1>'
+                f'<div class="sub">{_e(Т["clean_sub"])}</div></div><div class="tag">OK</div></div>')
+        применено = "".join(f'<div class="row"><div class="k">{_чип_инфо(s["label"])}</div>'
+                            f'<div>{_e(Т["line"])} {s["line"]}: <code>{_e(s["wrapper"])}(...)</code></div></div>'
+                            for s in р.get("sanitized", []))
+        тело = ((f'<h2>{_e(Т["applied"])}</h2><div class="fix">{применено}</div>' if применено else "")
+                + f'<h2>{_e(Т["code"])}</h2>{_код(строки, 0, set())}')
+    пробелы = "".join(f"<li>{_e(g)}</li>" for g in р.get("known_gaps", []))
+    if пробелы:
+        тело += f'<h2>{_e(Т["gaps"])}</h2><div class="card">{_e(Т["gaps_intro"])}<ul>{пробелы}</ul></div>'
+    цвет_точки = "#e0533d" if плохо else "#3ec46d"
+    время = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    return (f'<!doctype html><html lang="{lang}"><head><meta charset="utf-8">'
+            '<meta name="viewport" content="width=device-width,initial-scale=1">'
+            "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; style-src 'unsafe-inline'\">"
+            f"<title>Yadro Guard — {_e(Т['title'])}</title><style>{СТИЛЬ}</style></head><body><div class=\"wrap\">"
+            f'<header><span class="brand"><span class="dot" style="color:{цвет_точки}"></span>YADRO GUARD</span>'
+            f'<span class="meta">{_e(путь)}<br>{время} · v{_e(версия)}</span></header>'
+            f'{hero}{тело}<footer><span class="lock">🔒</span> {_e(Т["foot"])}</footer></div></body></html>')
+
+
 def построить(путь, исходник, диагностика=None, находки=None, версия=""):
     """диагностика: dict из guard_impl.diagnostic, или None, если нарушений нет."""
     строки = исходник.splitlines()

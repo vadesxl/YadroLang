@@ -72,7 +72,35 @@ class ТестыGuardApi(unittest.TestCase):
         self.assertEqual("Учётные данные и ключи", р["labels"][0]["label"])
         self.assertEqual("отправку в сеть", р["sink"]["human"])
         self.assertTrue(р["quarantine"][0]["options"])
-        self.assertTrue(р["autofix"]["проверено"])
+        self.assertTrue(р["autofix"]["verified"])
+
+    def test_английский_исходник_и_ответ(self):
+        код = "fn main() requires [NetworkAccess] {\n  let key = env.secret()\n  # \"env.secret\" in text\n  return net.send(key)\n}\n"
+        р = guard_api.анализ_текста(код, "en")
+        self.assertEqual("leak", р["status"])
+        self.assertEqual("en", р["code_language"])
+        self.assertEqual(4, р["line"])                         # номер строки исходника пользователя
+        self.assertEqual("YADRO-E2301", р["code"])
+        self.assertEqual("net.send", р["sink"]["name"])
+        self.assertEqual("Credentials & keys", р["labels"][0]["label"])
+        self.assertEqual("encrypt", р["autofix"]["wrapper"])
+        self.assertIn('"env.secret" in text', р["autofix"]["fixed_code"])  # комментарий не тронут
+        self.assertEqual("ok", guard_api.анализ_текста(р["autofix"]["fixed_code"], "en")["status"])
+        self.assertTrue(р["known_gaps"])                      # честные ограничения всегда видны
+
+    def test_пустой_и_битый_код_честная_ошибка(self):
+        with self.assertRaises(guard_api.ОшибкаВвода):
+            guard_api.анализ_текста("   ", "en")
+        р = guard_api.анализ_текста("fn main( {", "en")
+        self.assertEqual("error", р["status"])
+        self.assertTrue(р["message"].startswith("Syntax error"))
+
+    def test_английский_отчёт_экранирует(self):
+        р = guard_api.отчёт_текста('fn main() { return 0 }\n# <script>alert(1)</script>', "en")
+        self.assertEqual("ok", р["status"])
+        self.assertNotIn("<script", р["html"].lower())
+        self.assertIn("No leaks found", р["html"])
+        self.assertIn("Honest limits", р["html"])
 
     def test_fix_пишет_файл_который_проходит(self):
         путь = self.файл("функ старт() требует [ДоступСети] { вернуть сеть.отправить(пользователь.данные()) }")
