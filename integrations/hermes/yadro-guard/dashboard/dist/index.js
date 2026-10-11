@@ -62,9 +62,16 @@
         h("span", { className: "yg-inc-id" }, inc.id),
         h(Pill, { kind: pending ? "bad" : inc.status === "quarantined" ? "warn" : "ok" }, STATUS_TEXT[inc.status] || inc.status),
         h("span", { className: "yg-dim yg-right" }, ago(inc.at) + (inc.attempts > 1 ? " · " + inc.attempts + " attempts" : ""))),
-      h("div", { className: "yg-inc-story" },
+      (inc.findings || []).length ? h("div", { className: "yg-inc-story" },
         "Agent ", h("b", null, who), " tried to use the tool ", h("b", { className: "yg-mono" }, inc.tool),
-        " to send data to ", h("b", { className: "yg-mono" }, inc.destination), "."),
+        " to send data to ", h("b", { className: "yg-mono" }, inc.destination), ".") : null,
+      (inc.risks || []).map(function (r, i) {
+        return h("div", { className: "yg-risk", key: "r" + i },
+          h("div", null, "Agent ", h("b", null, who), " tried to: ", h("b", null, r.title), "."),
+          h("div", { className: "yg-dim" }, r.why),
+          h("div", { className: "yg-diff old" }, r.snippet),
+          h("div", { className: "yg-ok yg-small" }, "Safer: " + r.safer));
+      }),
       h("div", { className: "yg-inc-what" },
         (inc.findings || []).map(function (f, i) {
           return h("div", { className: "yg-row", key: i },
@@ -76,10 +83,12 @@
         "Process: " + (inc.process.name || "?") + " (pid " + inc.process.pid + ")" +
         (inc.agent && inc.agent.task_id ? " · task " + inc.agent.task_id.slice(0, 12) : "")) : null,
       pending ? h("div", { className: "yg-actions" },
-        h("button", { className: "yg-btn good", disabled: !!busy, onClick: function () { choose("protect"); },
-          title: "Replace the secret with a vault token and let the action go through" }, busy === "protect" ? "…" : "🛡 Protect & send"),
+        (inc.findings || []).length && !(inc.risks || []).length ? h("button", { className: "yg-btn good", disabled: !!busy,
+          onClick: function () { choose("protect"); },
+          title: "Replace the secret with a vault token and let the action go through" }, busy === "protect" ? "…" : "🛡 Protect & send") : null,
         h("button", { className: "yg-btn bad", disabled: !!busy, onClick: function () { choose("block"); },
-          title: "Keep the action blocked and store the secret encrypted" }, busy === "block" ? "…" : "⛔ Block & quarantine"),
+          title: "Keep the action blocked" + ((inc.findings || []).length ? " and store the secret encrypted" : "") },
+          busy === "block" ? "…" : ((inc.findings || []).length ? "⛔ Block & quarantine" : "⛔ Block")),
         h("button", { className: "yg-btn ghost", disabled: !!busy, onClick: function () { choose("allow"); },
           title: "Let this exact action run one time (expires in 15 minutes)" }, busy === "allow" ? "…" : "Allow once")) : null,
       note ? h("div", { className: "yg-note-line" }, note) : null);
@@ -179,6 +188,62 @@
     return h("details", { className: "yg-gaps" }, h("summary", null, "Honest limits of this check"),
       h("ul", null, p.gaps.map(function (g, i) { return h("li", { key: i }, g); })));
   }
+  const SEV = { critical: ["Critical", "bad"], high: ["High", "bad"], medium: ["Medium", "warn"], low: ["Low", "ok"], info: ["Safe", "ok"] };
+  const REACH = { all_networks: "Open to every network", local_network: "Open to this local network", this_computer: "Only this computer" };
+
+  function ExposurePanel() {
+    const [data, setData] = useState(null);
+    const [busy, setBusy] = useState(false);
+    const [showSafe, setShowSafe] = useState(false);
+    function load(force) {
+      setBusy(true);
+      SDK.fetchJSON(API + "/exposure" + (force ? "?refresh=1" : ""))
+        .then(setData).catch(function () { setData({ status: "error", message: "Guard backend is not reachable." }); })
+        .finally(function () { setBusy(false); });
+    }
+    useEffect(function () { load(false); }, []);
+    if (!data) return h(Card, { title: "network exposure", className: "wide" }, h(Empty, { text: "Scanning ports… this takes about 10 seconds." }));
+    if (data.status === "error") return h(Card, { title: "network exposure", className: "wide" }, h("div", { className: "yg-err" }, "● " + data.message));
+    const items = data.listeners || [];
+    const risky = items.filter(function (l) { return l.severity !== "info"; });
+    const safe = items.filter(function (l) { return l.severity === "info"; });
+    const c = data.counts || {};
+    const bad = (c.critical || 0) + (c.high || 0);
+    return h(React.Fragment, null,
+      h(Card, { title: "network exposure", className: "wide" },
+        h("div", { className: "yg-shield " + (bad ? "bad" : "ok") },
+          h("span", { className: "yg-big" }, (bad ? "⛔ " : "✓ ") + "Exposure score " + data.score + "/100"),
+          h("span", { className: "yg-dim" }, "  " + (c.critical || 0) + " critical · " + (c.high || 0) + " high · " +
+            (c.medium || 0) + " medium · " + (c.low || 0) + " low")),
+        h("div", { className: "yg-dim yg-small" }, "Programs on this computer that accept network connections, and who can reach them. Nothing is changed by this scan."),
+        h("div", { className: "yg-actions" },
+          h("button", { className: "yg-btn", disabled: busy, onClick: function () { load(true); } }, busy ? "Scanning…" : "Check again"),
+          h("span", { className: "yg-dim yg-small" }, "Last check " + ago(data.scanned_at))),
+        risky.length ? risky.map(function (l, i) { return h(PortRow, { key: i, l: l }); })
+          : h(Empty, { text: "Nothing risky is open to the network." }),
+        h("details", { className: "yg-gaps" }, h("summary", null, "Honest limits of this scan"),
+          h("ul", null, (data.limits || []).map(function (g, i) { return h("li", { key: i }, g); })))),
+      h(Card, { title: "safe listeners", className: "wide" },
+        h("button", { className: "yg-btn ghost", onClick: function () { setShowSafe(!showSafe); } },
+          (showSafe ? "Hide " : "Show ") + safe.length + " safe listeners"),
+        showSafe ? safe.map(function (l, i) { return h(PortRow, { key: i, l: l, compact: true }); }) : null));
+  }
+
+  function PortRow(p) {
+    const l = p.l, s = SEV[l.severity] || ["?", "warn"];
+    return h("div", { className: "yg-inc " + (l.severity === "critical" || l.severity === "high" ? "pending" : "done") },
+      h("div", { className: "yg-inc-top" },
+        h(Pill, { kind: s[1] }, s[0]),
+        h("b", null, l.service),
+        h("span", { className: "yg-dim yg-right yg-mono" }, l.proto + " " + l.address + ":" + l.port)),
+      h("div", { className: "yg-inc-story" },
+        h("b", { className: "yg-mono" }, l.process), " (pid " + l.pid + ") · " + (REACH[l.reach] || l.reach) +
+        (l.reach === "this_computer" ? "" : " · firewall: " + l.firewall),
+        (l.tags || []).indexOf("public-tunnel") >= 0 ? h("span", { className: "yg-err" }, " · public internet tunnel") : null),
+      p.compact ? null : h("div", { className: "yg-dim" }, l.why),
+      p.compact || l.fix === "Nothing to do." ? null : h("div", { className: "yg-ok yg-small" }, "What to do: " + l.fix));
+  }
+
   const KINDS = [["Credentials", "Password, API key or token"], ["Financial", "Card or bank account"],
     ["PII", "Personal data (name, phone, email)"], ["Health", "Medical data"], ["Location", "Location data"]];
 
@@ -241,10 +306,12 @@
         h("span", { className: "yg-brand" }, h("span", { className: "yg-dot " + (pending ? "bad" : "ok") }), "YADRO GUARD"),
         h("div", { className: "yg-tabs" },
           TabBtn("live", "Live protection" + (pending ? " (" + pending + ")" : "")),
+          TabBtn("exposure", "Exposure"),
           TabBtn("check", "Check code"),
           TabBtn("vault", "Vault"))),
       h("div", { className: "yg-grid" },
         tab === "live" ? h(LivePanel, { data: incidents, onChanged: refresh }) : null,
+        tab === "exposure" ? h(ExposurePanel, null) : null,
         tab === "check" ? h(CheckPanel, null) : null,
         tab === "vault" ? h(VaultPanel, { vault: vault, onChanged: refresh }) : null),
       h("div", { className: "yg-foot" }, "🔒 Everything runs on this computer. Secret values are never shown or sent."));

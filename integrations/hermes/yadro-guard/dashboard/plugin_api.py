@@ -186,6 +186,37 @@ def _policy():
         return None
 
 
+def _engine_module(name: str):
+    import sys
+    _policy()   # ensures the loader is registered
+    loader = sys.modules.get("yadro_guard_engine_loader")
+    try:
+        return loader.load_module(name) if loader else None
+    except Exception:
+        return None
+
+
+_EXPOSURE_CACHE: Dict[str, Any] = {}
+_EXPOSURE_TTL = 30
+
+
+@router.get("/exposure")
+async def exposure(refresh: int = 0) -> Dict[str, Any]:
+    """Read-only scan of listening ports. Cached briefly: the scan takes ~10 s."""
+    cached = _EXPOSURE_CACHE.get("result")
+    if cached and not refresh and time.time() - _EXPOSURE_CACHE.get("at", 0) < _EXPOSURE_TTL:
+        return cached
+    mod = _engine_module("exposure")
+    if mod is None:
+        return _error("Yadro Guard is not set up yet.")
+    try:
+        result = await asyncio.to_thread(mod.scan)
+    except Exception:
+        return _error("The exposure scan failed. Nothing was changed on this computer.")
+    _EXPOSURE_CACHE.update(result=result, at=time.time())
+    return result
+
+
 @router.get("/incidents")
 async def incidents() -> Dict[str, Any]:
     pol = _policy()

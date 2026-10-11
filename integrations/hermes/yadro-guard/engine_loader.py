@@ -26,6 +26,12 @@ def engine_home() -> Path | None:
         return None
 
 
+def load_module(name: str):
+    """Load any engine runtime module (e.g. 'exposure') under the unique package."""
+    load_policy()
+    return importlib.import_module(f"{PACKAGE}.runtime.{name}")
+
+
 def load_policy():
     """Return the engine's runtime.policy module. Raises on failure (callers fail closed)."""
     if f"{PACKAGE}.runtime.policy" in sys.modules:
