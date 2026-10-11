@@ -50,7 +50,12 @@ ROLES = {
                "false negatives and false positives in the code shown. Output a compact list. Max 600 words."),
 }
 
+_DAHL_URL = "https://inference.dahl.global/v1/chat/completions"
 PROVIDERS = {
+    "glm": {"env": "DAHL_API_KEY", "url": _DAHL_URL,
+            "model": os.environ.get("DAHL_GLM_MODEL", "zai-org/GLM-5.3-Flash")},
+    "deepseek": {"env": "DAHL_API_KEY", "url": _DAHL_URL,
+                 "model": os.environ.get("DAHL_DEEPSEEK_MODEL", "deepseek-ai/DeepSeek-V4-Flash-0731")},
     "openrouter": {"env": "OPENROUTER_API_KEY", "url": "https://openrouter.ai/api/v1/chat/completions",
                    "model": os.environ.get("OPENROUTER_MODEL", "deepseek/deepseek-chat-v3-0324:free")},
     "gemini": {"env": "GEMINI_API_KEY",
@@ -143,7 +148,9 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--list", action="store_true")
     ap.add_argument("--role", choices=sorted(ROLES), default="reviewer")
-    ap.add_argument("--model", choices=sorted(PROVIDERS))
+    ap.add_argument("--model", choices=sorted(PROVIDERS) + ["both"],
+                    help="'both' asks glm and deepseek in parallel for two independent opinions")
+    ap.add_argument("--ping", action="store_true", help="tiny request to check that helpers answer")
     ap.add_argument("--files", nargs="*", default=[])
     ap.add_argument("--question", default="Review this code.")
     ap.add_argument("--out")
@@ -153,17 +160,43 @@ def main(argv=None):
         for name, p in PROVIDERS.items():
             print(f"{name:11} {'READY' if name in av else 'no key':7} model={p['model']}  ({p['env']})")
         return 0
-    provider = a.model or (available() or [None])[0]
-    if not provider:
-        raise SystemExit("no helper model configured: set OPENROUTER_API_KEY, GEMINI_API_KEY, GROQ_API_KEY or LOCAL_LLM_URL")
+    if a.ping:
+        targets = [p for p in (["glm", "deepseek"] if a.model in (None, "both") else [a.model]) if p in available()]
+        if not targets:
+            raise SystemExit("no helper configured")
+        for p in targets:
+            t = time.time()
+            try:
+                txt = call(p, "Answer with one short word.", "Reply with: ready")
+                print(f"{p:9} OK   {int((time.time() - t) * 1000)} ms  model={PROVIDERS[p]['model']}  answer={txt.strip()[:30]!r}")
+            except SystemExit as e:
+                print(f"{p:9} FAIL {e}")
+        return 0
+    if a.model == "both":
+        providers = [p for p in ("glm", "deepseek") if p in available()]
+    else:
+        providers = [a.model or (available() or [None])[0]]
+    if not providers or not providers[0]:
+        raise SystemExit("no helper model configured: run tools/helpers/set_key.ps1")
     prompt = a.question + collect(a.files)
-    started = time.time()
-    answer = call(provider, ROLES[a.role], prompt)
     OUT.mkdir(exist_ok=True)
-    out = Path(a.out) if a.out else OUT / f"{int(started)}_{a.role}_{provider}.md"
-    out.write_text(f"# {a.role} via {provider} ({PROVIDERS[provider]['model']})\n\n"
-                   f"Question: {a.question}\nFiles: {', '.join(a.files) or '-'}\n\n{answer}\n", encoding="utf-8")
-    print(f"ok {provider} {int(time.time() - started)}s -> {out}")
+
+    def run(provider):
+        started = time.time()
+        try:
+            answer = call(provider, ROLES[a.role], prompt)
+        except SystemExit as e:
+            return f"FAIL {provider}: {e}"
+        out = (Path(a.out).with_name(f"{Path(a.out).stem}_{provider}.md") if a.out and len(providers) > 1
+               else Path(a.out) if a.out else OUT / f"{int(started)}_{a.role}_{provider}.md")
+        out.write_text(f"# {a.role} via {provider} ({PROVIDERS[provider]['model']})\n\n"
+                       f"Question: {a.question}\nFiles: {', '.join(a.files) or '-'}\n\n{answer}\n", encoding="utf-8")
+        return f"ok {provider} {int(time.time() - started)}s -> {out}"
+
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=len(providers)) as pool:
+        for line in pool.map(run, providers):
+            print(line)
     return 0
 
 
