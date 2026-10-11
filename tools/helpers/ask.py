@@ -51,11 +51,14 @@ ROLES = {
 }
 
 _DAHL_URL = "https://inference.dahl.global/v1/chat/completions"
+TEAM = ("glm", "deepseek", "minimax")   # helper models on the Dahl key; --model both/all asks every one
 PROVIDERS = {
     "glm": {"env": "DAHL_API_KEY", "url": _DAHL_URL,
             "model": os.environ.get("DAHL_GLM_MODEL", "zai-org/GLM-5.3-Flash")},
     "deepseek": {"env": "DAHL_API_KEY", "url": _DAHL_URL,
                  "model": os.environ.get("DAHL_DEEPSEEK_MODEL", "deepseek-ai/DeepSeek-V4-Flash-0731")},
+    "minimax": {"env": "DAHL_API_KEY", "url": _DAHL_URL,
+                "model": os.environ.get("DAHL_MINIMAX_MODEL", "MiniMaxAI/MiniMax-M2.7")},
     "openrouter": {"env": "OPENROUTER_API_KEY", "url": "https://openrouter.ai/api/v1/chat/completions",
                    "model": os.environ.get("OPENROUTER_MODEL", "deepseek/deepseek-chat-v3-0324:free")},
     "gemini": {"env": "GEMINI_API_KEY",
@@ -130,21 +133,21 @@ def call(provider: str, system: str, user: str) -> str:
     body = json.dumps({"model": p["model"], "temperature": 0.2, "max_tokens": 2500,
                        "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}).encode()
     last = ""
-    for attempt in range(3):                       # gateways (524/502/503/429) are often transient
+    for attempt in range(4):                       # gateways (524/502/503/429, resets) are often transient
         req = urllib.request.Request(p["url"], data=body, headers=headers, method="POST")
         try:
             with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
                 data = json.loads(r.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
             last = f"HTTP {e.code}: {e.read().decode('utf-8', errors='replace')[:200]}"
-            if e.code in (429, 502, 503, 504, 524) and attempt < 2:
-                time.sleep(5 * (attempt + 1))
+            if e.code in (429, 502, 503, 504, 524) and attempt < 3:
+                time.sleep(10 * (attempt + 1))
                 continue
             raise SystemExit(f"{provider} {last}")
-        except (urllib.error.URLError, TimeoutError) as e:
-            last = f"unreachable: {e}"
-            if attempt < 2:
-                time.sleep(5)
+        except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as e:
+            last = f"unreachable: {type(e).__name__}"
+            if attempt < 3:
+                time.sleep(10 * (attempt + 1))
                 continue
             raise SystemExit(f"{provider} {last}")
         try:
@@ -173,7 +176,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--list", action="store_true")
     ap.add_argument("--role", choices=sorted(ROLES), default="reviewer")
-    ap.add_argument("--model", choices=sorted(PROVIDERS) + ["both"],
+    ap.add_argument("--model", choices=sorted(PROVIDERS) + ["both", "all"],
                     help="'both' asks glm and deepseek in parallel for two independent opinions")
     ap.add_argument("--ping", action="store_true", help="tiny request to check that helpers answer")
     ap.add_argument("--files", nargs="*", default=[])
@@ -186,7 +189,7 @@ def main(argv=None):
             print(f"{name:11} {'READY' if name in av else 'no key':7} model={p['model']}  ({p['env']})")
         return 0
     if a.ping:
-        targets = [p for p in (["glm", "deepseek"] if a.model in (None, "both") else [a.model]) if p in available()]
+        targets = [p for p in (TEAM if a.model in (None, "both", "all") else [a.model]) if p in available()]
         if not targets:
             raise SystemExit("no helper configured")
         for p in targets:
@@ -197,8 +200,8 @@ def main(argv=None):
             except SystemExit as e:
                 print(f"{p:9} FAIL {e}")
         return 0
-    if a.model == "both":
-        providers = [p for p in ("glm", "deepseek") if p in available()]
+    if a.model in ("both", "all"):
+        providers = [p for p in TEAM if p in available()]
     else:
         providers = [a.model or (available() or [None])[0]]
     if not providers or not providers[0]:

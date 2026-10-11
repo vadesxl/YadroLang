@@ -1,0 +1,22 @@
+[
+  {"id": "rt_detectors", "role": "redteam", "files": ["src/runtime/detectors.py"],
+   "question": "Find concrete secrets (API keys, tokens, cards, IBAN, PEM, JWT) that these detectors MISS, and normal developer text that causes FALSE alarms. Give each as a literal Python string usable in a unit test, plus the expected result (detect / ignore)."},
+  {"id": "rt_crypto", "role": "redteam", "files": ["src/runtime/crypto_detect.py"],
+   "question": "Find crypto wallet secrets (BIP39 seed phrases in any formatting, WIF, xprv, Solana keys, keystore JSON) that are MISSED, and harmless text wrongly flagged. Literal test strings + expected result."},
+  {"id": "rt_actions", "role": "redteam", "files": ["src/runtime/actions.py"],
+   "question": "Find shell commands that do a risky action (expose a port to the network, public tunnel, firewall change, destroy data, force push, pipe download to shell, PowerShell equivalents) but are NOT detected, and harmless commands that ARE wrongly flagged. Literal command strings + expected result."},
+  {"id": "rt_policy", "role": "redteam", "files": ["src/runtime/policy.py", "integrations/hermes/yadro-guard/__init__.py"],
+   "question": "Find ways an agent tool call gets a secret or risky action past this pre_tool_call hook and incident policy: argument shapes, nesting, encodings (base64, hex, url, unicode), splitting a secret across calls, allow-once reuse, journal leaking raw values, fail-open paths. Minimal concrete examples."},
+  {"id": "rv_vault", "role": "reviewer", "files": ["src/vault.py"],
+   "question": "Security review of this DPAPI vault: token format, storage, fail-closed behaviour, races, what a local stealer could still get. Concrete bugs with line references."},
+  {"id": "rv_api", "role": "reviewer", "files": ["integrations/hermes/yadro-guard/dashboard/plugin_api.py", "src/guard_api.py"],
+   "question": "Review this local HTTP API for real bugs: input validation, path traversal, DoS (huge input), error leaks, CSRF from a browser page, anything that lets another local web page or agent change decisions."},
+  {"id": "rv_exposure", "role": "reviewer", "files": ["src/runtime/exposure.py", "src/runtime/services.py"],
+   "question": "Review this Windows exposure scanner, especially firewall_verdict: cases where it says 'blocked' or 'allowed' WRONGLY, netstat/tasklist parsing on non-English Windows, missing dangerous services. Concrete inputs that would break it."},
+  {"id": "ux_ui", "role": "reviewer", "files": ["integrations/hermes/yadro-guard/dashboard/dist/index.js", "integrations/hermes/yadro-guard/dashboard/dist/style.css"],
+   "question": "Review this dark-theme dashboard for UX problems a non-technical user hits: unreadable colours (e.g. native select dropdown rendering white with blue text), clipped modal/iframe, dead-looking buttons, confusing wording, missing loading/error states. Give exact CSS/JS fixes with line references."},
+  {"id": "arch_product", "role": "architect", "files": ["docs/HANDOFF.md", "THREAT_MODEL.md", "README.md"],
+   "question": "This is a local guard for AI agents (blocks secret leaks and risky actions, exposure scan, vault). Before a public release: what threats are missing, what claims would be dishonest, top 10 features/tests that would most increase trust and adoption. Be concrete and prioritised."},
+  {"id": "tests_ideas", "role": "tester", "files": ["src/runtime/actions.py", "src/runtime/detectors.py"],
+   "question": "Write 40 compact test cases (input -> expected) mixing positive and negative examples for these detectors, focused on real-world agent tool calls (curl, git, docker, python -c, PowerShell)."}
+]
