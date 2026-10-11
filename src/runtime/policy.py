@@ -99,19 +99,33 @@ def _known_secrets():
 
 def _incident_text(inc: Dict[str, Any]) -> str:
     """Message returned to the agent (and shown in Hermes) when an action is blocked."""
-    what = ", ".join(f'{f["title"]} ({f["preview"]})' for f in inc["findings"][:4])
-    return (f'⛔ Yadro Guard blocked this action. The tool "{inc["tool"]}" was about to send {what} '
-            f'to {inc["destination"]}. Incident {inc["id"]}. '
-            "The user can choose in the Guard tab: Protect & send, Block & quarantine, or Allow once. "
+    parts = []
+    if inc["findings"]:
+        what = ", ".join(f'{f["title"]} ({f["preview"]})' for f in inc["findings"][:4])
+        parts.append(f'The tool "{inc["tool"]}" was about to send {what} to {inc["destination"]}.')
+    for r in inc.get("risks", [])[:3]:
+        parts.append(f'The tool "{inc["tool"]}" tried a risky action: {r["title"]}. {r["why"]}')
+    choices = ("Protect & send, Block & quarantine, or Allow once" if inc["findings"]
+               else "Block, or Allow once")
+    return (f'⛔ Yadro Guard blocked this action. {" ".join(parts)} Incident {inc["id"]}. '
+            f"The user can choose in the Guard tab: {choices}. "
             "Do not retry until the user has decided, and never try to work around this block.")
+
+
+def _risk_key(tool_name: str, risks) -> str:
+    return hashlib.sha256((tool_name + "|risk|" + "|".join(sorted(r.kind + r.snippet for r in risks))).encode()).hexdigest()[:32]
 
 
 def check(tool_name: str, args: Any, context: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
     """The pre_tool_call decision. Returns None (allow) or a Hermes directive dict."""
+    from . import actions
     findings = detectors.scan_args(args, _known_secrets())
-    if not findings:
+    risks = actions.scan_actions(args)
+    if not findings and not risks:
         return None
-    key = action_key(tool_name, findings)
+    key = action_key(tool_name, findings) if findings else _risk_key(tool_name, risks)
+    if findings and risks:
+        key = hashlib.sha256((key + _risk_key(tool_name, risks)).encode()).hexdigest()[:32]
     now = int(time.time())
     decisions = _read("decisions.json", {})
     d = decisions.get(key)
@@ -121,14 +135,14 @@ def check(tool_name: str, args: Any, context: Optional[Dict[str, Any]] = None) -
             _write("decisions.json", decisions)
             _log_event(d.get("incident"), "allowed once")
             return None
-        if d["choice"] == "protect":
+        if d["choice"] == "protect" and not risks:
             safe = detectors.redact_args(args, findings, _replacement_for(d.get("tokens", {})))
             _log_event(d.get("incident"), "sent with protection")
             return {"action": "modify", "args": safe if isinstance(safe, dict) else {"value": safe}}
         if d["choice"] == "block":
             return {"action": "block", "message": f'⛔ Yadro Guard: this action was blocked by the user '
                                                   f'(incident {d.get("incident")}). Do not retry it.'}
-    inc = _new_incident(tool_name, args, findings, key, context or {})
+    inc = _new_incident(tool_name, args, findings, key, context or {}, risks)
     return {"action": "block", "message": _incident_text(inc)}
 
 
@@ -138,7 +152,7 @@ def _replacement_for(tokens: Dict[str, str]):
     return repl
 
 
-def _new_incident(tool_name, args, findings, key, ctx) -> Dict[str, Any]:
+def _new_incident(tool_name, args, findings, key, ctx, risks=()) -> Dict[str, Any]:
     incidents = _read("incidents.json", [])
     for inc in incidents:                      # same pending action: don't spam duplicates
         if inc["key"] == key and inc["status"] == "pending":
@@ -153,10 +167,21 @@ def _new_incident(tool_name, args, findings, key, ctx) -> Dict[str, Any]:
            "agent": {k: str(ctx.get(k, ""))[:80] for k in ("session_id", "task_id", "turn_id", "tool_call_id")},
            "process": {"pid": os.getpid(), "name": Path(sys.argv[0] if sys.argv and sys.argv[0] else "python").name[:60]},
            "findings": _quarantine(findings),
+           "risks": [_risk_public(r) for r in risks],
+           "kind": "secret" if findings else "action",
            "events": [{"at": int(time.time()), "what": "blocked before execution"}]}
     incidents.insert(0, inc)
     _write("incidents.json", incidents[:MAX_INCIDENTS])
     return inc
+
+
+def _risk_public(r) -> Dict[str, Any]:
+    """Risky action for the journal; the snippet is scrubbed of any secrets first."""
+    d = r.public()
+    hits = detectors.scan_text(d["snippet"])
+    for f in sorted(hits, key=lambda x: x.start, reverse=True):
+        d["snippet"] = d["snippet"][:f.start] + f.preview + d["snippet"][f.end:]
+    return d
 
 
 def _log_event(incident_id: Optional[str], what: str) -> None:
@@ -187,6 +212,8 @@ def decide(incident_id: str, choice: str) -> Dict[str, Any]:
         return {"status": "error", "message": "Incident not found."}
     if inc["status"] != "pending":
         return {"status": "error", "message": "This incident has already been decided."}
+    if choice == "protect" and not inc["findings"]:
+        return {"status": "error", "message": "There is no secret to protect here. Choose Block or Allow once."}
     tokens = {f["fingerprint"]: f["token"] for f in inc["findings"] if f.get("token")}
     decisions = _read("decisions.json", {})
     decisions[inc["key"]] = {"choice": choice, "at": int(time.time()), "incident": inc["id"], "tokens": tokens}
