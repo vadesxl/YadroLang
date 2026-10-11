@@ -19,7 +19,8 @@ class ТестыСейфа(unittest.TestCase):
 
     def test_секрет_не_лежит_открытым_текстом(self):
         токен = vault.положить("SuperSecret-12345", "УчетныеДанные")
-        self.assertTrue(токен.startswith("yg_tok_УчетныеДанные_"))
+        self.assertTrue(токен.startswith("yg_tok_Credentials_"))
+        self.assertTrue(токен.isascii())
         сырой = vault.путь_сейфа().read_text(encoding="utf-8")
         self.assertNotIn("SuperSecret-12345", сырой)
         self.assertNotIn("SuperSecret", токен)
@@ -35,7 +36,8 @@ class ТестыСейфа(unittest.TestCase):
     def test_список_без_значений_и_забыть(self):
         токен = vault.положить("x", "ПДн")
         записи = vault.список()
-        self.assertEqual(["created", "label", "token"], sorted(записи[0]))
+        self.assertEqual(["created", "label", "source", "title", "token"], sorted(записи[0]))
+        self.assertNotIn("blob", записи[0])                     # шифротекст наружу не отдаётся
         self.assertTrue(vault.забыть(токен))
         self.assertEqual([], vault.список())
 

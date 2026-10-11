@@ -25,6 +25,8 @@ from pathlib import Path
 
 ВЕРСИЯ_СЕЙФА = 1
 _МЕТКИ = {"ПДн", "Финансы", "Здоровье", "УчетныеДанные", "Локация"}
+_МЕТКА_EN_ТОКЕНА = {"ПДн": "PII", "Финансы": "Financial", "Здоровье": "Health",
+                    "УчетныеДанные": "Credentials", "Локация": "Location"}
 _ЭНТРОПИЯ = b"yadro-guard-vault-v1"
 
 
@@ -96,12 +98,49 @@ def положить(секрет: str, метка: str) -> str:
     if not секрет:
         raise ОшибкаСейфа("пустой секрет")
     шифр = _dpapi(секрет.encode("utf-8"), True)  # падает ДО записи, если шифра нет
-    токен = f"yg_tok_{метка}_{secrets.token_hex(16)}"
+    # Токен только ASCII: он уходит в HTTP-заголовки, URL и JSON чужих сервисов.
+    токен = f"yg_tok_{_МЕТКА_EN_ТОКЕНА[метка]}_{secrets.token_hex(16)}"
     данные = _загрузить()
     данные["items"][токен] = {"label": метка, "created": int(time.time()),
                               "blob": base64.b64encode(шифр).decode("ascii")}
     _сохранить(данные)
     return токен
+
+
+def положить_уникально(секрет: str, метка: str, отпечаток: str, название: str = "") -> str:
+    """Как положить(), но один и тот же секрет (по SHA-256) хранится один раз."""
+    данные = _загрузить()
+    for токен, запись in данные["items"].items():
+        if запись.get("fp") == отпечаток:
+            return токен
+    токен = положить(секрет, метка)
+    данные = _загрузить()
+    данные["items"][токен]["fp"] = отпечаток
+    данные["items"][токен]["title"] = название[:80]
+    данные["items"][токен]["source"] = "runtime-quarantine"
+    _сохранить(данные)
+    return токен
+
+
+_МЕТКА_EN = {"ПДн": "PII", "Финансы": "Financial", "Здоровье": "Health",
+             "УчетныеДанные": "Credentials", "Локация": "Location"}
+МАКС_ДЛЯ_СВЕРКИ = 500
+
+
+def known_values():
+    """(значение, метка_en, название) для точного поиска своих секретов в трафике агентов.
+    Расшифровка только в памяти процесса; наружу значения не уходят."""
+    if not _шифр_доступен() or not путь_сейфа().exists():
+        return []
+    out = []
+    for запись in list(_загрузить()["items"].values())[:МАКС_ДЛЯ_СВЕРКИ]:
+        try:
+            значение = _dpapi(base64.b64decode(запись["blob"]), False).decode("utf-8")
+        except (ОшибкаСейфа, ValueError):
+            continue
+        out.append((значение, _МЕТКА_EN.get(запись["label"], "Credentials"),
+                    запись.get("title") or "A secret from your vault"))
+    return out
 
 
 def достать(токен: str, мандат: bool, причина: str = "") -> str:
@@ -120,7 +159,9 @@ def достать(токен: str, мандат: bool, причина: str = ""
 def список():
     """Только метаданные: токен, метка, время. Значения не расшифровываются."""
     данные = _загрузить()
-    return [{"token": т, "label": з["label"], "created": з["created"]} for т, з in данные["items"].items()]
+    return [{"token": т, "label": _МЕТКА_EN.get(з["label"], з["label"]), "created": з["created"],
+             "title": з.get("title", ""), "source": з.get("source", "manual")}
+            for т, з in данные["items"].items()]
 
 
 def забыть(токен: str) -> bool:
