@@ -151,6 +151,14 @@ def call(provider: str, system: str, user: str) -> str:
             msg = data["choices"][0]["message"]
         except (KeyError, IndexError, TypeError):
             raise SystemExit(f"{provider}: unexpected answer shape")
+        u = data.get("usage") or {}
+        try:  # proof that the helper really answered + token accounting
+            OUT.mkdir(exist_ok=True)
+            with open(OUT / "usage.log", "a", encoding="utf-8") as f:
+                f.write(f"{int(time.time())} {provider} {data.get('model', p['model'])} "
+                        f"in={u.get('prompt_tokens')} out={u.get('completion_tokens')} id={data.get('id')}\n")
+        except OSError:
+            pass
         content = (msg.get("content") or "").strip()
         if not content:                                # some reasoning models put text elsewhere
             content = (msg.get("reasoning_content") or msg.get("reasoning") or "").strip()
