@@ -2,9 +2,8 @@
  * Plain IIFE, no build step. React + fetchJSON come from the host via
  * window.__HERMES_PLUGIN_SDK__. All text is rendered through React (auto-escaped);
  * no innerHTML anywhere. HTML reports open in a sandboxed iframe (no scripts). */
-(function () {
+(function (SDK, onReady) {
   "use strict";
-  const SDK = window.__HERMES_PLUGIN_SDK__;
   if (!SDK || !SDK.React) return;
   const React = SDK.React;
   const h = React.createElement;
@@ -317,7 +316,9 @@
       h("div", { className: "yg-foot" }, "🔒 Everything runs on this computer. Secret values are never shown or sent."));
   }
 
+  onReady(GuardPage);
+})(window.__HERMES_PLUGIN_SDK__, function (GuardPage) {
   if (window.__HERMES_PLUGINS__ && typeof window.__HERMES_PLUGINS__.register === "function") {
     window.__HERMES_PLUGINS__.register("yadro-guard", GuardPage);
   }
-})();
+});

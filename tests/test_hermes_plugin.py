@@ -68,6 +68,18 @@ class ТестыПлагинаHermes(unittest.TestCase):
         self.assertIn('sandbox: ""', js)              # отчёт в iframe без скриптов
         self.assertIn('register("yadro-guard"', js)
 
+    def test_desktop_половина_собрана_и_в_рамках_sdk(self):
+        import re, subprocess
+        р = subprocess.run([sys.executable, str(КОРЕНЬ / "tools" / "build_desktop_plugin.py"), "--check"],
+                           capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(0, р.returncode, р.stdout)
+        js = (ПЛАГИН / "desktop" / "plugin.js").read_text(encoding="utf-8")
+        импорты = set(re.findall(r'^import .*? from "([^"]+)";', js, flags=re.M))
+        self.assertEqual({"react", "@hermes/plugin-sdk"}, импорты)
+        self.assertIn('export default {', js)
+        self.assertNotIn("eval(", js)
+        self.assertNotIn("innerHTML", js)
+
     def test_интерфейс_рендерится_и_решение_уходит(self):
         import shutil, subprocess
         node = shutil.which("node")
