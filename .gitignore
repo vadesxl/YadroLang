@@ -1,0 +1,35 @@
+﻿# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# Secrets and local environment
+.env
+.env.*
+*.pem
+*.key
+
+# Native build artifacts
+*.o
+*.obj
+*.exe
+*.ll
+
+# Local/private files that must never be published
+*.pdf
+alive.pulse
+evidence_*/
+private/
+
+# Editors / OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+
+# helper model answers
+tools/helpers/out/
