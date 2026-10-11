@@ -60,7 +60,11 @@ _RULES = [
     ("github_token", "Credentials", "GitHub access token",
      r"\b(?:gh[pousr]_[A-Za-z0-9]{36,255}|github_pat_[A-Za-z0-9_]{60,255})\b", "high"),
     ("gitlab_token", "Credentials", "GitLab access token", r"\bglpat-[A-Za-z0-9_\-]{20,}\b", "high"),
-    ("aws_access_key", "Credentials", "AWS access key ID", r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b", "high"),
+    # All AWS unique-ID prefixes (redteam review by DeepSeek V4: only AKIA/ASIA were covered).
+    ("aws_access_key", "Credentials", "AWS access key ID",
+     r"\b(?:AKIA|ASIA|ABIA|ACCA|AGPA|AIDA|AIPA|ANPA|ANVA|APKA|AROA|ASCA)[0-9A-Z]{16}\b", "high"),
+    ("aws_secret_key", "Credentials", "AWS secret access key",
+     r"(?i)aws[_\-]?secret[_\-]?(?:access[_\-]?)?key[\"']?\s*[:=]\s*[\"']?([A-Za-z0-9/+=]{40})(?![A-Za-z0-9/+=])", "high"),
     ("google_api_key", "Credentials", "Google API key", r"\bAIza[0-9A-Za-z_\-]{35}\b", "high"),
     ("openai_key", "Credentials", "OpenAI API key", r"\bsk-(?:proj-|svcacct-|admin-)?[A-Za-z0-9_\-]{20,}T3BlbkFJ[A-Za-z0-9_\-]{20,}\b|\bsk-proj-[A-Za-z0-9_\-]{40,}\b", "high"),
     ("anthropic_key", "Credentials", "Anthropic API key", r"\bsk-ant-[A-Za-z0-9_\-]{30,}\b", "high"),
@@ -140,7 +144,7 @@ def scan_text(text: str, path: str = "", known_secrets: Iterable[tuple] = ()) ->
     # 2) structured detectors
     for kind, label, title, rx, conf in _COMPILED:
         for m in rx.finditer(text):
-            g = 1 if kind == "password_in_url" else 0
+            g = 1 if kind in ("password_in_url", "aws_secret_key") else 0
             add(Finding(kind, label, title, m.start(g), m.end(g), m.group(g), conf, path))
     for m in _CARD.finditer(text):
         digits = re.sub(r"\D", "", m.group(0))
@@ -149,6 +153,10 @@ def scan_text(text: str, path: str = "", known_secrets: Iterable[tuple] = ()) ->
     for m in _IBAN.finditer(text):
         if iban_ok(m.group(0)):
             add(Finding("iban", "Financial", "Bank account (IBAN)", m.start(), m.end(), m.group(0), "high", path))
+    # 2b) crypto wallets: seed phrases, private keys, keystores (what stealers hunt for)
+    from . import crypto_detect
+    for kind, label, title, s, e, conf in crypto_detect.scan(text):
+        add(Finding(kind, label, title, s, e, text[s:e], conf, path))
     # 3) secret-looking assignments / bearer headers with high entropy
     for rx, title in ((_ASSIGN, "Secret value assigned to a password/token field"),
                       (_BEARER, "Bearer token in an Authorization header")):

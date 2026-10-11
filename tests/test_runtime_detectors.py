@@ -20,6 +20,15 @@ class ТестыДетекторов(unittest.TestCase):
         self.assertEqual(["aws_access_key"], kinds(f"key={AWS}"))
         self.assertEqual(["google_api_key"], kinds(f"?k={GOOGLE}"))
 
+    def test_обходы_найденные_redteam_deepseek(self):
+        # AWS: другие префиксы ключей и секретный ключ (ревью DeepSeek V4).
+        self.assertEqual(["aws_access_key"], kinds("id=AID" + "A" + "QWERTYUIOP123456"))
+        self.assertEqual(["aws_access_key"], kinds("AROA" + "ABCDEFGHIJKLMNOP"))
+        секрет = "wJalrXUtnFEMI/K7MDENG/bPxRfiCY" + "EXAMPLEKEY"
+        ф = d.scan_text(f"aws_secret_access_key = {секрет}")
+        self.assertEqual(["aws_secret_key"], [x.kind for x in ф])
+        self.assertEqual(секрет, ф[0].value)
+
     def test_карта_только_с_верной_контрольной_суммой(self):
         self.assertEqual(["card_number"], kinds(f"pay {CARD} now"))
         self.assertEqual([], kinds("order 4111 1111 1111 1112"))        # Luhn не сходится

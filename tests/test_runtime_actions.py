@@ -18,7 +18,29 @@ class ТестыОпасныхДействий(unittest.TestCase):
         self.assertEqual(["http_server_all"], kinds("python -m http.server 8000"))
         self.assertEqual(["public_tunnel"], kinds("ngrok http 3000"))
 
+    def test_обходы_найденные_redteam_glm(self):
+        # Каждая строка — реальный обход из ревью GLM-5.3 (tools/helpers/out/rt_actions.md).
+        for cmd in ['uvicorn app:app --host "0.0.0.0"',
+                    "uvicorn app:app --host '0.0.0.0'",
+                    "uvicorn app:app --host\t0.0.0.0",
+                    "flask run --host=::0",
+                    "server --listen 0:0:0:0:0:0:0:0",
+                    "HOST=0.0.0.0 npm start",
+                    "BIND_ADDR=0.0.0.0 ./server",
+                    "echo 'host: 0.0.0.0' > config.yaml",
+                    "dotnet run --urls http://+:8080",
+                    "python -c \"import socket; s=socket.socket(); s.bind(('0.0.0.0', 8080))\""]:
+            self.assertEqual(["expose_bind_all"], kinds(cmd), cmd)
+        self.assertEqual(["expose_ollama"], kinds("set OLLAMA_HOST=:11434 && ollama serve"))
+        self.assertEqual(["expose_ollama"], kinds("OLLAMA_HOST=http://0.0.0.0:11434 ollama serve"))
+
     def test_безопасные_варианты_не_ловятся(self):
+        self.assertEqual([], kinds('uvicorn app:app --host "127.0.0.1"'))
+        self.assertEqual([], kinds("HOST=localhost npm start"))
+        self.assertEqual([], kinds("echo 'host: 127.0.0.1' > config.yaml"))
+        self.assertEqual([], kinds("OLLAMA_HOST=127.0.0.1:11434 ollama serve"))
+        self.assertEqual([], kinds("ping 10.0.0.0"))
+        self.assertEqual([], kinds("echo 0.0.0.0.1 is not an address"))
         self.assertEqual([], kinds("llama-server --host 127.0.0.1 --port 8080"))
         self.assertEqual([], kinds("docker run -p 127.0.0.1:5432:5432 postgres"))
         self.assertEqual([], kinds("python -m http.server 8000 --bind 127.0.0.1"))

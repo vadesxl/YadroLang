@@ -32,8 +32,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 OUT = Path(__file__).resolve().parent / "out"
-MAX_CHARS = 120_000
-TIMEOUT = 180
+MAX_CHARS = 40_000      # big prompts time out on gateways (HTTP 524); send focused files
+TIMEOUT = 240
 FORBIDDEN = {".env", "vault.json", "decisions.json", "incidents.json", "config.json"}
 FORBIDDEN_SUFFIX = {".pem", ".key", ".pfx", ".p12", ".kdbx", ".dat"}
 
@@ -127,21 +127,38 @@ def call(provider: str, system: str, user: str) -> str:
         headers["Authorization"] = f"Bearer {key}"
     if provider == "openrouter":
         headers["X-Title"] = "Yadro Guard review"
-    body = json.dumps({"model": p["model"], "temperature": 0.2,
+    body = json.dumps({"model": p["model"], "temperature": 0.2, "max_tokens": 2500,
                        "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}).encode()
-    req = urllib.request.Request(p["url"], data=body, headers=headers, method="POST")
-    try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
-            data = json.loads(r.read().decode("utf-8"))
-    except urllib.error.HTTPError as e:
-        detail = e.read().decode("utf-8", errors="replace")[:300]
-        raise SystemExit(f"{provider} HTTP {e.code}: {detail}")
-    except (urllib.error.URLError, TimeoutError) as e:
-        raise SystemExit(f"{provider} unreachable: {e}")
-    try:
-        return data["choices"][0]["message"]["content"]
-    except (KeyError, IndexError, TypeError):
-        raise SystemExit(f"{provider}: unexpected answer shape")
+    last = ""
+    for attempt in range(3):                       # gateways (524/502/503/429) are often transient
+        req = urllib.request.Request(p["url"], data=body, headers=headers, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+                data = json.loads(r.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            last = f"HTTP {e.code}: {e.read().decode('utf-8', errors='replace')[:200]}"
+            if e.code in (429, 502, 503, 504, 524) and attempt < 2:
+                time.sleep(5 * (attempt + 1))
+                continue
+            raise SystemExit(f"{provider} {last}")
+        except (urllib.error.URLError, TimeoutError) as e:
+            last = f"unreachable: {e}"
+            if attempt < 2:
+                time.sleep(5)
+                continue
+            raise SystemExit(f"{provider} {last}")
+        try:
+            msg = data["choices"][0]["message"]
+        except (KeyError, IndexError, TypeError):
+            raise SystemExit(f"{provider}: unexpected answer shape")
+        content = (msg.get("content") or "").strip()
+        if not content:                                # some reasoning models put text elsewhere
+            content = (msg.get("reasoning_content") or msg.get("reasoning") or "").strip()
+        if content:
+            return content
+        last = "empty answer"
+        time.sleep(3)
+    raise SystemExit(f"{provider} {last}")
 
 
 def main(argv=None):

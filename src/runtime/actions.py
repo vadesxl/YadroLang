@@ -30,16 +30,23 @@ class RiskyAction:
         return dict(self.__dict__)
 
 
-_ALL_IF = r"(?:0\.0\.0\.0|::|\*|\[::\])"
+# "All interfaces" in every spelling seen in the wild (redteam review by GLM-5.3 found
+# quoted, tab-separated, ::0, expanded IPv6 and env/YAML forms that slipped through).
+_ALL_IF = r"(?:0\.0\.0\.0|0(?::0){7}|::0?|\[::0?\]|\*)"
+_END = r"(?![\w.])"
 RULES = [
     # ---- exposing services to the network ----
     ("expose_bind_all", "Starts a server open to the whole network",
      "The service will accept connections from any device on the network, and from the internet if the router forwards the port.",
      "Use --host 127.0.0.1 (or bind to localhost) unless other devices really need it.",
-     rf"(?:--(?:host|bind|listen|ip|address)[= ]|-b\s|-H\s|server_name\s*=\s*['\"]|host\s*=\s*['\"]){_ALL_IF}\b"),
+     # --host 0.0.0.0 | --host="0.0.0.0" | --host\t'::' | -b 0.0.0.0 | host='0.0.0.0' | host: 0.0.0.0 (YAML)
+     # HOST=0.0.0.0 / BIND_ADDR=0.0.0.0 env | --urls http://+:80 / *:80 / 0.0.0.0:80 (Kestrel, uvicorn --bind)
+     rf"(?:--(?:host|bind|listen|ip|addr|address)\s*[=\s]\s*|(?<![\w-])-[bH]\s+|\b(?:server_name|host|bind|listen)\s*[=:]\s*"
+     rf"|\b(?!OLLAMA_HOST\b)[A-Z_]*(?:HOST|BIND|LISTEN|ADDR)[A-Z_]*\s*=\s*)['\"]?(?:https?://)?{_ALL_IF}{_END}"
+     rf"|--urls?\s*[=\s]\s*['\"]?https?://[+*]:\d+|\.bind\(\s*\(\s*['\"](?:0\.0\.0\.0|::|)['\"]"),
     ("expose_ollama", "Exposes Ollama to the network",
      "Anyone on the network could run, pull or delete your local AI models.",
-     "Keep OLLAMA_HOST=127.0.0.1.", rf"OLLAMA_HOST\s*=\s*['\"]?{_ALL_IF}"),
+     "Keep OLLAMA_HOST=127.0.0.1.", rf"OLLAMA_HOST\s*=\s*['\"]?(?:https?://)?(?:{_ALL_IF}|:\d+)"),
     ("expose_docker_port", "Publishes a container port on all interfaces",
      "docker -p without an address publishes the port to every network and bypasses Windows Firewall in many setups.",
      "Use -p 127.0.0.1:PORT:PORT.", r"\bdocker(?:\s+compose)?\b[^\n]*\s-p\s+(?!127\.0\.0\.1:|localhost:)\d+:\d+"),
