@@ -1,16 +1,16 @@
-/* Yadro Guard — вкладка дашборда Hermes.
- * Plain IIFE без сборки (как плагин kanban). React и fetchJSON берутся у хоста
- * через window.__HERMES_PLUGIN_SDK__. Весь текст выводится через React
- * (автоэкранирование); dangerouslySetInnerHTML не используется. HTML-отчёт
- * открывается в sandbox-iframe без права исполнять скрипты. */
+/* Yadro Guard — Hermes dashboard tab.
+ * Plain IIFE, no build step. React + fetchJSON come from the host via
+ * window.__HERMES_PLUGIN_SDK__. All text is rendered through React (auto-escaped);
+ * no innerHTML anywhere. HTML reports open in a sandboxed iframe (no scripts). */
 (function () {
   "use strict";
   const SDK = window.__HERMES_PLUGIN_SDK__;
   if (!SDK || !SDK.React) return;
   const React = SDK.React;
   const h = React.createElement;
-  const { useState, useEffect, useCallback } = React;
+  const { useState, useEffect, useCallback, useRef } = React;
   const API = "/api/plugins/yadro-guard";
+  const POLL_MS = 4000;
 
   function post(path, body) {
     return SDK.fetchJSON(API + path, {
@@ -19,156 +19,235 @@
       body: JSON.stringify(body),
     });
   }
+  function ago(ts) {
+    if (!ts) return "";
+    const s = Math.max(0, Math.floor(Date.now() / 1000 - ts));
+    if (s < 60) return s + "s ago";
+    if (s < 3600) return Math.floor(s / 60) + " min ago";
+    if (s < 86400) return Math.floor(s / 3600) + " h ago";
+    return Math.floor(s / 86400) + " d ago";
+  }
+  const LABEL_COLOR = { Credentials: "#8a5cf6", Financial: "#e8a33d", PII: "#e0533d", Health: "#d14fa0", Location: "#2f9fd8" };
+  const STATUS_TEXT = { pending: "Waiting for your decision", protected: "Sent with protection",
+    quarantined: "Blocked, secret quarantined", allowed: "Allowed once" };
 
   function Card(p) {
     return h("div", { className: "yg-card " + (p.className || "") },
       h("b", { className: "yg-hd" }, p.title), p.children);
   }
-
   function Chip(p) {
     const l = p.label || {};
-    return h("span", { className: "yg-chip", style: { background: l.color || "#555" } },
-      (l.icon || "") + " " + (l.label || l.id || ""));
+    return h("span", { className: "yg-chip", style: { background: l.color || LABEL_COLOR[l.id] || "#555" } },
+      (l.icon ? l.icon + " " : "") + (l.label || l.id || ""));
+  }
+  function Pill(p) {
+    return h("span", { className: "yg-pill " + p.kind }, p.children);
+  }
+  function Empty(p) { return h("div", { className: "yg-dim" }, "● " + p.text); }
+  function IncidentCard(p) {
+    const inc = p.inc;
+    const [busy, setBusy] = useState("");
+    const [note, setNote] = useState("");
+    const pending = inc.status === "pending";
+    function choose(choice) {
+      setBusy(choice);
+      post("/incidents/decide", { incident: inc.id, choice: choice })
+        .then(function (r) { setNote(r.status === "ok" ? r.next : (r.message || "Could not save the decision.")); p.onChanged(); })
+        .catch(function () { setNote("Could not reach the Guard backend."); })
+        .finally(function () { setBusy(""); });
+    }
+    const who = inc.agent && inc.agent.session_id ? "session " + inc.agent.session_id.slice(0, 12) : "an agent";
+    return h("div", { className: "yg-inc " + (pending ? "pending" : "done") },
+      h("div", { className: "yg-inc-top" },
+        h("span", { className: "yg-inc-id" }, inc.id),
+        h(Pill, { kind: pending ? "bad" : inc.status === "quarantined" ? "warn" : "ok" }, STATUS_TEXT[inc.status] || inc.status),
+        h("span", { className: "yg-dim yg-right" }, ago(inc.at) + (inc.attempts > 1 ? " · " + inc.attempts + " attempts" : ""))),
+      h("div", { className: "yg-inc-story" },
+        "Agent ", h("b", null, who), " tried to use the tool ", h("b", { className: "yg-mono" }, inc.tool),
+        " to send data to ", h("b", { className: "yg-mono" }, inc.destination), "."),
+      h("div", { className: "yg-inc-what" },
+        (inc.findings || []).map(function (f, i) {
+          return h("div", { className: "yg-row", key: i },
+            h(Chip, { label: { id: f.label, label: f.title } }),
+            h("span", { className: "yg-mono yg-dim" }, f.preview + (f.path ? "  in " + f.path : "")),
+            f.token ? h("span", { className: "yg-dim" }, "→ " + f.token.slice(0, 24) + "…") : null);
+        })),
+      inc.process ? h("div", { className: "yg-dim yg-small" },
+        "Process: " + (inc.process.name || "?") + " (pid " + inc.process.pid + ")" +
+        (inc.agent && inc.agent.task_id ? " · task " + inc.agent.task_id.slice(0, 12) : "")) : null,
+      pending ? h("div", { className: "yg-actions" },
+        h("button", { className: "yg-btn good", disabled: !!busy, onClick: function () { choose("protect"); },
+          title: "Replace the secret with a vault token and let the action go through" }, busy === "protect" ? "…" : "🛡 Protect & send"),
+        h("button", { className: "yg-btn bad", disabled: !!busy, onClick: function () { choose("block"); },
+          title: "Keep the action blocked and store the secret encrypted" }, busy === "block" ? "…" : "⛔ Block & quarantine"),
+        h("button", { className: "yg-btn ghost", disabled: !!busy, onClick: function () { choose("allow"); },
+          title: "Let this exact action run one time (expires in 15 minutes)" }, busy === "allow" ? "…" : "Allow once")) : null,
+      note ? h("div", { className: "yg-note-line" }, note) : null);
   }
 
-  function Verdict(p) {
-    const r = p.result;
-    if (!r) return h("div", { className: "yg-dim" }, "● no data — укажите файл и нажмите scan");
-    if (r.status === "error") return h("div", { className: "yg-err" }, "● " + (r.message || "ошибка"));
-    if (r.status === "ok") return h("div", { className: "yg-verdict ok" },
-      h("span", { className: "yg-big" }, "✓ ЧИСТО"),
-      h("span", { className: "yg-dim" }, "  утечек не найдено · " + (r.lines || 0) + " строк"));
-    return h("div", { className: "yg-verdict bad" },
-      h("span", { className: "yg-big" }, "⛔ УТЕЧКА"),
-      h("span", { className: "yg-code" }, r.code),
-      h("div", { className: "yg-why" }, r.why));
+  function LivePanel(p) {
+    const data = p.data;
+    if (!data) return h(Card, { title: "live protection", className: "wide" }, h(Empty, { text: "loading…" }));
+    if (data.status === "error") return h(Card, { title: "live protection", className: "wide" },
+      h("div", { className: "yg-err" }, "● " + data.message));
+    const items = data.items || [];
+    const pending = items.filter(function (i) { return i.status === "pending"; });
+    const done = items.filter(function (i) { return i.status !== "pending"; });
+    return h(React.Fragment, null,
+      h(Card, { title: "live protection", className: "wide" },
+        h("div", { className: "yg-shield " + (pending.length ? "bad" : "ok") },
+          h("span", { className: "yg-big" }, pending.length ? "⛔ " + pending.length + " action" + (pending.length > 1 ? "s" : "") + " blocked" : "✓ Protected"),
+          h("span", { className: "yg-dim" }, pending.length
+            ? "  An agent tried to send sensitive data. Decide below what should happen."
+            : "  Every agent action is checked for secrets before it runs.")),
+        pending.length ? pending.map(function (inc) { return h(IncidentCard, { key: inc.id, inc: inc, onChanged: p.onChanged }); }) : null),
+      h(Card, { title: "incident history", className: "wide" },
+        done.length ? done.slice(0, 12).map(function (inc) { return h(IncidentCard, { key: inc.id, inc: inc, onChanged: p.onChanged }); })
+          : h(Empty, { text: "No decided incidents yet." })));
+  }
+  const SAMPLE = "fn main() requires [NetworkAccess] {\n  let key = env.secret()\n  return net.send(key)\n}\n";
+
+  function CheckPanel() {
+    const [code, setCode] = useState("");
+    const [title, setTitle] = useState("");
+    const [busy, setBusy] = useState(false);
+    const [r, setR] = useState(null);
+    const [report, setReport] = useState("");
+    function analyze() {
+      setBusy(true); setReport("");
+      post("/analyze", { code: code, title: title })
+        .then(setR).catch(function () { setR({ status: "error", message: "Could not reach the Guard backend." }); })
+        .finally(function () { setBusy(false); });
+    }
+    function applyFix() { if (r && r.autofix) { setCode(r.autofix.fixed_code); setR(null); } }
+    function openReport() { post("/report", { code: code }).then(function (d) { setReport(d.html || ""); }).catch(function () {}); }
+    return h(Card, { title: "check agent code before it runs", className: "wide" },
+      h("div", { className: "yg-dim yg-small" }, "Paste a program written in YadroLang (English or Russian keywords). " +
+        "Guard proves where sensitive data can leak, before the code ever runs."),
+      h("input", { className: "yg-input", placeholder: "Name (optional), e.g. payment agent", value: title,
+        onChange: function (e) { setTitle(e.target.value); } }),
+      h("textarea", { className: "yg-code-in", spellCheck: false, placeholder: SAMPLE, value: code,
+        onChange: function (e) { setCode(e.target.value); } }),
+      h("div", { className: "yg-actions" },
+        h("button", { className: "yg-btn", disabled: busy || !code.trim(), onClick: analyze }, busy ? "Checking…" : "Check code"),
+        h("button", { className: "yg-btn ghost", onClick: function () { setCode(SAMPLE); setR(null); } }, "Load example"),
+        r && r.status !== "error" ? h("button", { className: "yg-btn ghost", onClick: openReport }, "Open full report") : null),
+      r ? h(Result, { r: r, onFix: applyFix }) : null,
+      report ? h("div", { className: "yg-modal", onClick: function () { setReport(""); } },
+        h("iframe", { className: "yg-frame", sandbox: "", srcDoc: report, title: "report" })) : null);
   }
 
-  function Flow(p) {
-    const r = p.result;
-    if (!r || r.status !== "leak") return null;
-    const nodes = (r.sources || []).map(function (s, i) {
-      return h(React.Fragment, { key: "s" + i },
-        h("div", { className: "yg-node src" },
-          h("div", { className: "yg-lbl" }, "строка " + s.line),
-          h("div", { className: "yg-mono" }, s.name + "()"),
-          h(Chip, { label: s.label })),
-        h("div", { className: "yg-arrow" }, "→"));
-    });
-    nodes.push(h("div", { key: "sink", className: "yg-node sink" },
-      h("div", { className: "yg-lbl" }, "строка " + r.line + " · утечка"),
-      h("div", { className: "yg-mono" }, r.sink.name),
-      h("div", { className: "yg-lbl" }, r.sink.human)));
-    return h(Card, { title: "путь данных" }, h("div", { className: "yg-flow" }, nodes));
-  }
-
-  function Quarantine(p) {
-    const r = p.result;
-    if (!r || r.status !== "leak") return null;
-    return h(Card, { title: "карантин · как отправить легально" },
+  function Result(p) {
+    const r = p.r;
+    if (r.status === "error") return h("div", { className: "yg-err yg-gap" }, "● " + r.message);
+    if (r.status === "ok") return h("div", { className: "yg-gap" },
+      h("div", { className: "yg-shield ok" }, h("span", { className: "yg-big" }, "✓ No leaks found"),
+        h("span", { className: "yg-dim" }, "  in " + r.lines + " lines")),
+      (r.sanitized || []).map(function (s, i) {
+        return h("div", { className: "yg-row", key: i }, h(Chip, { label: s.label }),
+          h("span", { className: "yg-dim" }, "protected on line " + s.line + " with " + s.wrapper + "()"));
+      }), h(Gaps, { gaps: r.known_gaps }));
+    const a = r.autofix;
+    return h("div", { className: "yg-gap" },
+      h("div", { className: "yg-shield bad" }, h("span", { className: "yg-big" }, "⛔ Leak on line " + r.line),
+        h("span", { className: "yg-code" }, r.code)),
+      h("div", { className: "yg-inc-story" }, r.why),
+      h("div", null, (r.labels || []).map(function (l, i) { return h(Chip, { key: i, label: l }); })),
+      h("div", { className: "yg-inc-story" },
+        (r.sources || []).length ? "The data comes from " : "Sensitive data ",
+        (r.sources || []).map(function (s, i) { return h("b", { key: i, className: "yg-mono" }, (i ? ", " : "") + s.name + "() on line " + s.line); }),
+        " and leaves through ", h("b", { className: "yg-mono" }, r.sink.name), " (" + r.sink.human + ")."),
+      h("div", { className: "yg-sub" }, "How to send it legally"),
       (r.quarantine || []).map(function (q, i) {
+        return h("div", { className: "yg-row", key: i }, h("span", { className: "yg-k" }, q.label),
+          h("span", null, q.options.length ? q.options.map(function (o) { return o.human + " (" + o.fn + ")"; }).join(" · ")
+            : "no allowed protection: this data must not leave the program"));
+      }),
+      a ? h("div", null, h("div", { className: "yg-sub" }, "Automatic fix"),
+        h("div", { className: "yg-diff old" }, "− " + a.before.trim()),
+        h("div", { className: "yg-diff new" }, "+ " + a.after.trim()),
+        h("div", { className: "yg-actions" },
+          a.verified ? h("span", { className: "yg-ok" }, "✓ verified: the fixed code passes the check") :
+            h("span", { className: "yg-warn" }, "⚠ needs manual review"),
+          h("button", { className: "yg-btn good", disabled: !a.verified, onClick: p.onFix }, "Apply fix to the code above"))) :
+        h("div", { className: "yg-dim yg-small" }, "No safe automatic fix for this leak. Use one of the protections above."),
+      h(Gaps, { gaps: r.known_gaps }));
+  }
+
+  function Gaps(p) {
+    if (!p.gaps || !p.gaps.length) return null;
+    return h("details", { className: "yg-gaps" }, h("summary", null, "Honest limits of this check"),
+      h("ul", null, p.gaps.map(function (g, i) { return h("li", { key: i }, g); })));
+  }
+  const KINDS = [["Credentials", "Password, API key or token"], ["Financial", "Card or bank account"],
+    ["PII", "Personal data (name, phone, email)"], ["Health", "Medical data"], ["Location", "Location data"]];
+
+  function VaultPanel(p) {
+    const [secret, setSecret] = useState("");
+    const [label, setLabel] = useState("Credentials");
+    const [msg, setMsg] = useState(null);
+    const [busy, setBusy] = useState(false);
+    function save() {
+      setBusy(true); setMsg(null);
+      post("/vault", { secret: secret, label: label })
+        .then(function (r) {
+          if (r.status === "ok") { setSecret(""); setMsg({ ok: true, text: "Saved. Agents now get the token " + r.token.slice(0, 26) + "… instead of the real value, and any attempt to send the real value is blocked." }); p.onChanged(); }
+          else setMsg({ ok: false, text: r.message || "Could not save." });
+        })
+        .catch(function () { setMsg({ ok: false, text: "Could not reach the Guard backend." }); })
+        .finally(function () { setBusy(false); });
+    }
+    const items = (p.vault && p.vault.items) || [];
+    return h(Card, { title: "vault · your secrets, encrypted" },
+      h("div", { className: "yg-dim yg-small" }, "Add a secret you want to protect. It is encrypted with your Windows account " +
+        "and never shown again here. Guard blocks any agent that tries to send it."),
+      h("input", { className: "yg-input", type: "password", autoComplete: "off", placeholder: "Paste the secret value",
+        value: secret, onChange: function (e) { setSecret(e.target.value); } }),
+      h("select", { className: "yg-input", value: label, onChange: function (e) { setLabel(e.target.value); } },
+        KINDS.map(function (k) { return h("option", { key: k[0], value: k[0] }, k[1]); })),
+      h("div", { className: "yg-actions" },
+        h("button", { className: "yg-btn", disabled: busy || !secret, onClick: save }, busy ? "Encrypting…" : "Protect this secret")),
+      msg ? h("div", { className: msg.ok ? "yg-ok yg-small" : "yg-err yg-small" }, msg.text) : null,
+      h("div", { className: "yg-sub" }, items.length + " protected secret" + (items.length === 1 ? "" : "s")),
+      items.slice(0, 8).map(function (v, i) {
         return h("div", { className: "yg-row", key: i },
-          h("span", { className: "yg-k" }, q.label),
-          h("span", null, (q.options || []).length
-            ? q.options.map(function (o) { return o.human + " " + o.fn + "()"; }).join(" · ")
-            : "нет разрешённой обёртки — наружу нельзя"));
+          h(Chip, { label: { id: v.label, label: v.title || v.label } }),
+          h("span", { className: "yg-dim yg-small" }, v.source === "runtime-quarantine" ? "quarantined from an agent" : "added by you"),
+          h("span", { className: "yg-dim yg-small" }, ago(v.created)));
       }));
   }
 
-  function Autofix(p) {
-    const r = p.result;
-    if (!r || r.status !== "leak" || !r.autofix) return null;
-    const a = r.autofix;
-    return h(Card, { title: "автоисправление · было / стало" },
-      h("div", { className: "yg-diff old" }, "− " + a["было"].trim()),
-      h("div", { className: "yg-diff new" }, "+ " + a["стало"].trim()),
-      h("div", { className: "yg-actions" },
-        a["проверено"] ? h("span", { className: "yg-ok" }, "✓ проверено движком")
-          : h("span", { className: "yg-warn" }, "⚠ нужна ручная проверка"),
-        h("button", { className: "yg-btn", disabled: !a["проверено"], onClick: p.onFix }, "применить → .fixed"),
-        p.fixed ? h("span", { className: "yg-dim" }, p.fixed) : null));
-  }
-
-  function History(p) {
-    const items = p.items || [];
-    return h(Card, { title: "история сканов" },
-      items.length ? items.slice(0, 8).map(function (it, i) {
-        return h("div", { className: "yg-row yg-click", key: i, onClick: function () { p.onPick(it.path); } },
-          h("span", { className: it.status === "ok" ? "yg-ok" : "yg-err" }, it.status === "ok" ? "● ok" : "● leak"),
-          h("span", { className: "yg-path" }, String(it.path).split(/[\\/]/).pop()),
-          h("span", { className: "yg-dim" }, (it.labels || []).join(", ")));
-      }) : h("div", { className: "yg-dim" }, "● no data"));
-  }
-
-  function Vault(p) {
-    const items = p.items;
-    return h(Card, { title: "сейф · токены вместо секретов" },
-      !items ? h("div", { className: "yg-dim" }, "loading…")
-        : items.length ? items.slice(0, 6).map(function (v, i) {
-          return h("div", { className: "yg-row", key: i },
-            h("span", { className: "yg-mono yg-tok" }, String(v.token).slice(0, 34) + "…"),
-            h("span", { className: "yg-dim" }, v.label));
-        }) : h("div", { className: "yg-dim" }, "● пусто · python -m src.vault put --label …"),
-      h("div", { className: "yg-dim yg-note" }, "оригиналы зашифрованы DPAPI и через веб не выдаются"));
-  }
   function GuardPage() {
-    const [path, setPath] = useState("");
-    const [busy, setBusy] = useState(false);
-    const [result, setResult] = useState(null);
-    const [fixed, setFixed] = useState("");
-    const [report, setReport] = useState("");
-    const [history, setHistory] = useState([]);
+    const [tab, setTab] = useState("live");
+    const [incidents, setIncidents] = useState(null);
     const [vault, setVault] = useState(null);
-
+    const alive = useRef(true);
     const refresh = useCallback(function () {
-      SDK.fetchJSON(API + "/history").then(function (d) { setHistory(d.items || []); }).catch(function () {});
-      SDK.fetchJSON(API + "/vault").then(function (d) { setVault(d.items || []); }).catch(function () { setVault([]); });
+      SDK.fetchJSON(API + "/incidents").then(function (d) { if (alive.current) setIncidents(d); })
+        .catch(function () { if (alive.current) setIncidents({ status: "error", message: "Guard backend is not reachable." }); });
+      SDK.fetchJSON(API + "/vault").then(function (d) { if (alive.current) setVault(d); }).catch(function () {});
     }, []);
-    useEffect(function () { refresh(); }, [refresh]);
-
-    function scan(p) {
-      const target = String(p || path).trim();
-      if (!target) return;
-      setPath(target); setBusy(true); setFixed(""); setReport("");
-      post("/scan", { path: target })
-        .then(setResult)
-        .catch(function () { setResult({ status: "error", message: "бэкенд плагина недоступен" }); })
-        .finally(function () { setBusy(false); refresh(); });
+    useEffect(function () {
+      alive.current = true; refresh();
+      const t = setInterval(function () { if (!document.hidden) refresh(); }, POLL_MS);
+      return function () { alive.current = false; clearInterval(t); };
+    }, [refresh]);
+    const pending = incidents && incidents.pending ? incidents.pending : 0;
+    function TabBtn(id, text) {
+      return h("button", { className: "yg-tab" + (tab === id ? " on" : ""), onClick: function () { setTab(id); } }, text);
     }
-    function fix() {
-      post("/fix", { path: path.trim() })
-        .then(function (d) { setFixed(d.written ? "записано: " + d.written : (d.message || "не исправлено")); })
-        .catch(function () { setFixed("ошибка"); });
-    }
-    function openReport() {
-      post("/report", { path: path.trim() })
-        .then(function (d) { setReport(d.html || ""); })
-        .catch(function () {});
-    }
-
     return h("div", { className: "yg-root" },
       h("div", { className: "yg-top" },
-        h("span", { className: "yg-brand" },
-          h("span", { className: "yg-dot " + (result && result.status === "leak" ? "bad" : "ok") }), "YADRO GUARD"),
-        h("input", {
-          className: "yg-input", value: path, placeholder: "C:\\путь\\к\\программе.яд",
-          onChange: function (e) { setPath(e.target.value); },
-          onKeyDown: function (e) { if (e.key === "Enter") scan(); },
-        }),
-        h("button", { className: "yg-btn", disabled: busy, onClick: function () { scan(); } }, busy ? "scan…" : "scan"),
-        h("button", { className: "yg-btn ghost", disabled: !result || result.status === "error", onClick: openReport }, "отчёт")),
+        h("span", { className: "yg-brand" }, h("span", { className: "yg-dot " + (pending ? "bad" : "ok") }), "YADRO GUARD"),
+        h("div", { className: "yg-tabs" },
+          TabBtn("live", "Live protection" + (pending ? " (" + pending + ")" : "")),
+          TabBtn("check", "Check code"),
+          TabBtn("vault", "Vault"))),
       h("div", { className: "yg-grid" },
-        h(Card, { title: "вердикт", className: "wide" },
-          h(Verdict, { result: result }),
-          result && result.labels ? h("div", { className: "yg-chips" },
-            result.labels.map(function (l, i) { return h(Chip, { key: i, label: l }); })) : null),
-        h(Flow, { result: result }),
-        h(Quarantine, { result: result }),
-        h(Autofix, { result: result, onFix: fix, fixed: fixed }),
-        h(History, { items: history, onPick: scan }),
-        h(Vault, { items: vault })),
-      report ? h("div", { className: "yg-modal", onClick: function () { setReport(""); } },
-        h("iframe", { className: "yg-frame", sandbox: "", srcDoc: report, title: "отчёт" })) : null);
+        tab === "live" ? h(LivePanel, { data: incidents, onChanged: refresh }) : null,
+        tab === "check" ? h(CheckPanel, null) : null,
+        tab === "vault" ? h(VaultPanel, { vault: vault, onChanged: refresh }) : null),
+      h("div", { className: "yg-foot" }, "🔒 Everything runs on this computer. Secret values are never shown or sent."));
   }
 
   if (window.__HERMES_PLUGINS__ && typeof window.__HERMES_PLUGINS__.register === "function") {

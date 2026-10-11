@@ -68,6 +68,16 @@ class ТестыПлагинаHermes(unittest.TestCase):
         self.assertIn('sandbox: ""', js)              # отчёт в iframe без скриптов
         self.assertIn('register("yadro-guard"', js)
 
+    def test_интерфейс_рендерится_и_решение_уходит(self):
+        import shutil, subprocess
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("Node.js не установлен")
+        р = subprocess.run([node, str(КОРЕНЬ / "tests" / "js" / "render_guard_page.mjs"),
+                            str(ПЛАГИН / "dashboard" / "dist" / "index.js")],
+                           capture_output=True, text=True, encoding="utf-8", timeout=60)
+        self.assertEqual(0, р.returncode, р.stderr or р.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()
