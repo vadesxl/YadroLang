@@ -51,7 +51,8 @@ def main() -> int:
     src, dst = Path(sys.argv[1]), Path(sys.argv[2])
     if "--mode" in sys.argv:
         SYSTEM = SYSTEMS[sys.argv[sys.argv.index("--mode") + 1]]
-    lines = [l.strip() for l in src.read_text(encoding="utf-8-sig").splitlines() if l.strip()]
+    keep_spaces = "--mode" in sys.argv          # code texts: leading/trailing spaces are significant
+    lines = [l if keep_spaces else l.strip() for l in src.read_text(encoding="utf-8-sig").splitlines() if l.strip()]
     done = json.loads(dst.read_text(encoding="utf-8")) if dst.exists() else {}
     todo = [l for l in lines if l not in done]
     chunks = [todo[i:i + CHUNK] for i in range(0, len(todo), CHUNK)]

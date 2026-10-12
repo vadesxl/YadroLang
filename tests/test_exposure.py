@@ -214,9 +214,9 @@ class ТестыЭкспозиции(unittest.TestCase):
 
     def test_отмена_uac_честно(self):
         from src.runtime import remedy as R
-        class Р:
+        class Отмена:
             returncode = 1223
-        with mock.patch.object(R.subprocess, "run", return_value=Р()):
+        with mock.patch.object(R.subprocess, "run", return_value=Отмена()):
             with self.assertRaisesRegex(R.RemedyError, "cancelled"):
                 R._elevated("Get-Date")
 

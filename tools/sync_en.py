@@ -66,7 +66,7 @@ def _items(rel: str, text: str):
             docstring = (prev is None or prev.type in (tokenize.NEWLINE, tokenize.INDENT, tokenize.DEDENT,
                                                        tokenize.ENCODING)) \
                 and nxt is not None and nxt.type in (tokenize.NEWLINE, tokenize.ENDMARKER)
-            if docstring or not is_test:                      # test data strings stay as they are
+            if docstring or not is_test or re.fullmatch(r"_?[А-Яа-яЁё][\wЁё]*", m.group(3)):  # test data stays
                 yield "text", t.start, t.end, m.group(3), (m.group(1), m.group(2))
         elif t.type == getattr(tokenize, "FSTRING_MIDDLE", -1) and not is_test:
             yield "text", t.start, t.end, t.string, None
@@ -82,6 +82,7 @@ def collect(out: Path) -> None:
     out.mkdir(parents=True, exist_ok=True)
     for name, data in (("names", names), ("text", texts)):
         uniq = list(dict.fromkeys(x.replace("\n", "\\n") for x in data))
+        uniq = [x for x in uniq if x.strip()]
         (out / f"en_{name}_todo.txt").write_text("\n".join(uniq) + "\n", encoding="utf-8")
         print(f"{name}: {len(uniq)}")
 
@@ -99,10 +100,24 @@ def _apply_edits(text: str, edits) -> str:
 
 def translate_py(rel: str, names: dict, texts: dict) -> str:
     text = (ROOT / rel).read_text(encoding="utf-8")
+    ascii_names = {t.string for t in tokenize.generate_tokens(io.StringIO(text).readline)
+                   if t.type == tokenize.NAME and not CYR.search(t.string)}
+    clash = sorted({names[t.string] for t in tokenize.generate_tokens(io.StringIO(text).readline)
+                    if t.type == tokenize.NAME and names.get(t.string) in ascii_names})
+    if clash:          # often harmless (attributes, kwargs); the mirror's tests decide
+        print(f"note {rel}: translated names also used as ASCII names: {clash}")
     edits, missing = [], []
     for kind, s, e, ru, wrap in _items(rel, text):
         table = names if kind == "names" else texts
+        if wrap and ru in names:                              # "name" strings (mock.patch.object, getattr)
+            table = names
         en = table.get(ru) or table.get(ru.replace("\n", "\\n"))
+        core = ru.strip()
+        found = table.get(core) or table.get(ru.replace("\n", "\\n").strip(" "))
+        if not en and core and found:                        # trimmed outer spaces: put them back
+            en = ru[:len(ru) - len(ru.lstrip())] + found.replace("\\n", "\n").strip() + ru[len(ru.rstrip()):]
+        if not en and wrap and rel.startswith("tests/") and re.fullmatch(r"_?[А-Яа-яЁё][\wЁё]*", ru):
+            continue                                          # a one-word test data value: keep it
         if not en:
             missing.append(ru[:60])
             continue
@@ -136,7 +151,9 @@ def apply(dst: Path) -> None:
         (dst / rel).write_text(translate_py(rel, names, texts), encoding="utf-8", newline="\n")
         written.append(rel)
     for rel in TRANSLATE_LINES:
-        out = [texts.get(l, l) for l in (ROOT / rel).read_text(encoding="utf-8").splitlines()]
+        stripped = {k.strip(): v.strip() for k, v in texts.items()}
+        out = [texts.get(l) or (l[:len(l) - len(l.lstrip())] + stripped[l.strip()] if l.strip() in stripped else l)
+               for l in (ROOT / rel).read_text(encoding="utf-8").splitlines()]
         left = [l for l in out if CYR.search(l)]
         if left:
             raise SystemExit(f"{rel}: untranslated lines: {left[:2]}")
@@ -144,6 +161,9 @@ def apply(dst: Path) -> None:
         (dst / rel).write_text("\n".join(out) + "\n", encoding="utf-8-sig" if rel.endswith(".ps1") else "utf-8",
                                newline="\n")
         written.append(rel)
+    # the desktop bundle embeds style.css, which was just translated: rebuild it inside the mirror
+    import subprocess
+    subprocess.run([sys.executable, "tools/build_desktop_plugin.py"], cwd=dst, check=True)
     (dst / "SYNC_MANIFEST.json").write_text(json.dumps({"source": "vadesxl/YadroLang", "files": written},
                                                        indent=1), encoding="utf-8")
     print(f"synced {len(written)} files into {dst}")

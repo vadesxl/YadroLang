@@ -1,6 +1,6 @@
 {
- "????????": "title",
- "?????????????????????": "VaultManagementTests",
+ "ТестыУправленияСейфом": "VaultManagementTests",
+ "Отмена": "UacCancelled",
  "_МЕТКА_EN": "_label_en",
  "_МЕТКА_EN_ТОКЕНА": "_token_en_label",
  "_МЕТКИ": "_labels",
@@ -173,7 +173,7 @@
  "массив": "array",
  "метка": "label",
  "мод": "mod",
- "название": "name",
+ "название": "title",
  "настроить": "configure",
  "нумер": "numbering",
  "оп": "op",

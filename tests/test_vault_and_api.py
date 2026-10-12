@@ -4,7 +4,12 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
-from src import vault, guard_api
+from src import vault
+
+try:                                   # the English mirror ships the vault without the YadroLang checker
+    from src import guard_api
+except ImportError:
+    guard_api = None
 
 
 @unittest.skipUnless(os.name == "nt", "DPAPI есть только в Windows")
@@ -136,6 +141,7 @@ class ТестыFailClosedСейфа(unittest.TestCase):
             self.assertFalse(vault.путь_сейфа().exists())
 
 
+@unittest.skipIf(guard_api is None, "src/guard_api.py is not part of this repo")
 class ТестыGuardApi(unittest.TestCase):
     def файл(self, текст, имя="p.яд"):
         п = Path(tempfile.mkdtemp()) / имя
