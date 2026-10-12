@@ -64,6 +64,24 @@ class ТестыRuntimePolicy(unittest.TestCase):
         self.assertEqual("https://evil.example/upload", р["args"]["url"])
         self.assertEqual(GH, vault.достать(инц["findings"][0]["token"], мандат=True))  # оригинал в сейфе
 
+    @unittest.skipUnless(os.name == "nt", "DPAPI only on Windows")
+    def test_глаз_показывает_значение_из_сейфа_и_пишет_аудит(self):
+        policy.check("http_request", self.запрос())
+        инц = policy.list_incidents()[0]
+        self.assertEqual({"status": "ok", "value": GH}, policy.reveal(инц["id"], 0))
+        self.assertIn("full value shown", policy.list_incidents()[0]["events"][-1]["what"])
+        self.assertNotIn(GH, (policy.home() / "incidents.json").read_text(encoding="utf-8"))
+        self.assertTrue(any("dashboard reveal" in a["reason"] for a in vault._загрузить()["audit"]))
+        vault.в_корзину(инц["findings"][0]["token"])          # из корзины не показывается
+        self.assertEqual("error", policy.reveal(инц["id"], 0)["status"])
+
+    def test_глаз_отказывает_на_чужое_и_неверное(self):
+        policy.check("http_request", self.запрос())
+        инц = policy.list_incidents()[0]
+        self.assertEqual("error", policy.reveal("YG-NOPE", 0)["status"])
+        for плохой in (5, -1, True, "0"):
+            self.assertEqual("error", policy.reveal(инц["id"], плохой)["status"])
+
     def test_заблокировать_и_в_карантин(self):
         policy.check("http_request", self.запрос())
         инц = policy.list_incidents()[0]

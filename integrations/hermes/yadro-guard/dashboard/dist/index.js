@@ -212,6 +212,7 @@
     "Could not reach the Guard backend.": "Не удалось связаться с сервером Guard.",
     "Could not save the decision.": "Не удалось сохранить решение.",
     "Could not save.": "Не удалось сохранить.",
+    "Could not show the value.": "Не удалось показать значение.",
     "Credentials": "Учётные данные",
     "Critical": "Критический",
     "Crypto private key (hex)": "Приватный ключ криптокошелька (hex)",
@@ -276,6 +277,7 @@
     "Hide": "Скрыть",
     "Hide ": "Скрыть ",
     "High": "Высокий",
+    "Hold to show the full value": "Удерживайте, чтобы увидеть значение целиком",
     "Honest limits of this check": "Честные ограничения этой проверки",
     "Honest limits of this scan": "Честные ограничения этого сканирования",
     "How to send it legally": "Как отправить это легально",
@@ -342,6 +344,7 @@
     "New name": "Новое название",
     "New value": "Новое значение",
     "No decided incidents yet.": "Решённых инцидентов пока нет.",
+    "No incidents yet.": "Инцидентов пока нет.",
     "No safe automatic fix for this leak. Use one of the protections above.": "Нет безопасного автоматического исправления для этой утечки. Используйте одну из защит выше.",
     "Normal for Steam. Nothing to do.": "Нормально для Steam. Ничего делать не нужно.",
     "Nothing risky is open to the network.": "Ничего рискованного не открыто для сети.",
@@ -500,6 +503,7 @@
     "The program's file could not be found.": "Не удалось найти файл программы.",
     "The service is off and will not start again.": "Служба отключена и больше не запустится.",
     "The service will accept connections from any device on the network, and from the internet if the router forwards the port.": "Служба будет принимать подключения от любого устройства в сети, а также из интернета, если роутер пробрасывает порт.",
+    "The value is no longer in the vault.": "Этого значения больше нет в сейфе.",
     "There is no secret to protect here. Choose Block or Allow once.": "Здесь нет секрета для защиты. Выберите «Заблокировать» или «Разрешить один раз».",
     "This PC will stop offering UPnP devices to the network.": "Этот ПК перестанет предлагать устройства UPnP сети.",
     "This change cannot be undone automatically.": "Это изменение нельзя отменить автоматически.",
@@ -516,6 +520,7 @@
     "This secret is too long (limit # KB).": "Секрет слишком длинный (лимит # КБ).",
     "This secret is too long (limit 4 KB).": "Секрет слишком длинный (лимит 4 КБ).",
     "This service cannot be switched off safely from here.": "Эту службу нельзя безопасно отключить отсюда.",
+    "This value was not stored in the vault, so it cannot be shown.": "Это значение не сохранено в сейфе, поэтому его нельзя показать.",
     "Trash (#)": "Корзина (#)",
     "Tunnels (ngrok, cloudflared, localtunnel, bore) publish a local service on the internet, bypassing the router and firewall.": "Туннели (ngrok, cloudflared, localtunnel, bore) публикуют локальный сервис в интернете в обход роутера и брандмауэра.",
     "Turn off 'Serve on Local Network'.": "Выключите «Serve on Local Network».",
@@ -530,6 +535,7 @@
     "Unknown action.": "Неизвестное действие.",
     "Unknown choice.": "Неизвестный вариант.",
     "Unknown entry.": "Неизвестная запись.",
+    "Unknown finding.": "Неизвестная находка.",
     "Unknown operation.": "Неизвестная операция.",
     "Unknown service": "Неизвестная служба",
     "Unknown settings page.": "Неизвестная страница настроек.",
@@ -610,6 +616,7 @@
     "if (data.status ===": "if (data.status ===",
     "if (l.firewall_rule) t +=": "if (l.firewall_rule) t +=",
     "if (r.status ===": "if (r.status ===",
+    "in #": "в #",
     "incident history": "история инцидентов",
     "live protection": "защита в реальном времени",
     "llama.cpp server (local AI model)": "Сервер llama.cpp (локальная ИИ-модель)",
@@ -663,6 +670,7 @@
     "✓ Protected": "✓ Защищено",
     "✓ verified: the fixed code passes the check": "✓ проверено: исправленный код проходит проверку",
     "🔒 Everything runs on this computer. Secret values are never shown or sent.": "🔒 Всё выполняется на этом компьютере. Значения секретов никогда не отображаются и не отправляются.",
+    "🔒 Everything runs on this computer. Secrets are masked; the full value appears only while you hold 👁, and every view is logged.": "🔒 Всё работает на этом компьютере. Секреты замаскированы: полное значение видно, только пока вы удерживаете 👁, и каждый просмотр записывается в журнал.",
     "🛡 Protect & send": "🛡 Защитить и отправить"
     };
   /* I18N_RU_END */
@@ -735,6 +743,34 @@
     return h("span", { className: "yg-pill " + p.kind }, p.children);
   }
   function Empty(p) { return h("div", { className: "yg-dim" }, "● " + p.text); }
+  // Masked secret with a hold-to-show eye. The full value is fetched only while the button is
+  // held (audited on the server), lives only in this component's state and is dropped on release,
+  // after 10 s, or on unmount.
+  function Reveal(p) {
+    const [value, setValue] = useState("");
+    const [err, setErr] = useState("");
+    const held = useRef(false);
+    const timer = useRef(null);
+    function hide() { held.current = false; clearTimeout(timer.current); setValue(""); }
+    function show() {
+      held.current = true; setErr("");
+      post("/incidents/reveal", { incident: p.incident, index: p.index }).then(function (r) {
+        if (!held.current) return;
+        if (r.status === "ok") { setValue(r.value); clearTimeout(timer.current); timer.current = setTimeout(hide, 10000); }
+        else { setErr(r.message || "Could not show the value."); setTimeout(function () { setErr(""); }, 4000); }
+      }).catch(function () { setErr("Could not reach the Guard backend."); });
+    }
+    useEffect(function () { return function () { held.current = false; clearTimeout(timer.current); }; }, []);
+    function key(e) { return e.key === " " || e.key === "Enter"; }
+    return h("span", { className: "yg-reveal" + (value ? " yg-reveal-on" : "") },
+      h("span", { className: "yg-reveal-val yg-mono" }, value || p.preview),
+      h("button", { type: "button", className: "yg-reveal-btn", title: "Hold to show the full value",
+        "aria-label": "Hold to show the full value", "aria-pressed": !!value,
+        onPointerDown: function (e) { e.preventDefault(); show(); }, onPointerUp: hide, onPointerLeave: hide,
+        onBlur: hide, onKeyDown: function (e) { if (key(e) && !held.current) { e.preventDefault(); show(); } },
+        onKeyUp: function (e) { if (key(e)) hide(); } }, value ? "🙈" : "👁"),
+      err ? h("span", { className: "yg-err yg-small" }, err) : null);
+  }
   function IncidentCard(p) {
     const inc = p.inc;
     const [busy, setBusy] = useState("");
@@ -767,7 +803,9 @@
         (inc.findings || []).map(function (f, i) {
           return h("div", { className: "yg-row", key: i },
             h(Chip, { label: { id: f.label, label: f.title } }),
-            h("span", { className: "yg-mono yg-dim" }, f.preview + (f.path ? "  in " + f.path : "")),
+            f.token ? h(Reveal, { incident: inc.id, index: i, preview: f.preview })
+              : h("span", { className: "yg-mono yg-dim" }, f.preview),
+            f.path ? h("span", { className: "yg-dim yg-small" }, "in " + f.path) : null,
             f.token ? h("span", { className: "yg-dim" }, "→ " + f.token.slice(0, 24) + "…") : null);
         })),
       inc.process ? h("div", { className: "yg-dim yg-small" },
@@ -801,9 +839,10 @@
             ? "  An agent tried to send sensitive data. Decide below what should happen."
             : "  Every agent action is checked for secrets before it runs.")),
         pending.length ? pending.map(function (inc) { return h(IncidentCard, { key: inc.id, inc: inc, onChanged: p.onChanged }); }) : null),
-      h(Card, { title: "incident history", className: "wide" },
-        done.length ? done.slice(0, 12).map(function (inc) { return h(IncidentCard, { key: inc.id, inc: inc, onChanged: p.onChanged }); })
-          : h(Empty, { text: "No decided incidents yet." })));
+      h(Card, { title: "incident history", className: "wide grow" },
+        done.length ? h("div", { className: "yg-list" },
+          done.slice(0, 50).map(function (inc) { return h(IncidentCard, { key: inc.id, inc: inc, onChanged: p.onChanged }); }))
+          : h(Empty, { text: "No incidents yet." })));
   }
   const SAMPLE = "fn main() requires [NetworkAccess] {\n  let key = env.secret()\n  return net.send(key)\n}\n";
 
@@ -1168,12 +1207,12 @@
           TabBtn("exposure", "Exposure"),
           TabBtn("check", "Check code"),
           TabBtn("vault", "Vault"))),
-      h("div", { className: "yg-grid" },
+      h("div", { className: "yg-grid" + (tab === "live" ? " live" : "") },
         tab === "live" ? h(LivePanel, { data: incidents, onChanged: refresh }) : null,
         tab === "exposure" ? h(ExposurePanel, null) : null,
         tab === "check" ? h(CheckPanel, null) : null,
         tab === "vault" ? h(VaultPanel, { vault: vault, onChanged: refresh }) : null),
-      h("div", { className: "yg-foot" }, "🔒 Everything runs on this computer. Secret values are never shown or sent."));
+      h("div", { className: "yg-foot" }, "🔒 Everything runs on this computer. Secrets are masked; the full value appears only while you hold 👁, and every view is logged."));
   }
 
   onReady(GuardPage);

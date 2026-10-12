@@ -370,6 +370,23 @@ async def decide(body: "DecisionBody") -> Dict[str, Any]:
     return await asyncio.to_thread(pol.decide, incident, choice)
 
 
+class RevealBody(BaseModel):
+    incident: str
+    index: int
+
+
+@router.post("/incidents/reveal")
+async def reveal(body: "RevealBody") -> Dict[str, Any]:
+    """Full value of a caught secret for the hold-to-show eye button (CSRF-guarded, audited)."""
+    pol = _policy()
+    if pol is None:
+        return _error("Yadro Guard is not set up yet.")
+    incident, index = str(getattr(body, "incident", ""))[:32], getattr(body, "index", -1)
+    if not isinstance(index, int) or isinstance(index, bool):
+        return _error("Unknown finding.")
+    return await asyncio.to_thread(pol.reveal, incident, index)
+
+
 @router.get("/health")
 async def health() -> Dict[str, Any]:
     cfg = _config()

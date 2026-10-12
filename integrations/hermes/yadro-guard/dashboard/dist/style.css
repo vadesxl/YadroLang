@@ -106,3 +106,24 @@ select.yg-input { appearance: auto; }
 .yg-kind:hover { border-color: var(--yg-accent); }
 .yg-kind.on { background: var(--yg-accent); color: #000; border-color: var(--yg-accent); font-weight: 700; }
 .yg-root { color-scheme: dark; }
+
+/* Layout: content column capped at 1280px (= Tailwind max-w-7xl mx-auto), centred on wide screens */
+.yg-root { display: flex; flex-direction: column; box-sizing: border-box; }
+.yg-top, .yg-grid, .yg-foot { width: 100%; max-width: 1280px; margin-left: auto; margin-right: auto; box-sizing: border-box; }
+.yg-grid { flex: 1 0 auto; }
+/* Live tab: history card takes all the remaining height instead of a squeezed strip */
+.yg-grid.live { display: flex; flex-direction: column; }
+.yg-grid.live > .yg-card.grow { flex: 1 0 auto; display: flex; flex-direction: column; min-height: 260px; }
+.yg-grid.live > .yg-card.grow > .yg-list { flex: 1 1 auto; }
+.yg-grid.live > .yg-card.grow .yg-dim:only-child { margin: auto; }
+
+/* Masked secret + hold-to-show eye */
+.yg-reveal { display: inline-flex; align-items: center; gap: 6px; font-family: inherit; }
+.yg-reveal-val { padding: 1px 6px; border-radius: 4px; background: color-mix(in srgb, var(--yg-accent) 8%, transparent);
+  letter-spacing: .02em; word-break: break-all; }
+.yg-reveal.yg-reveal-on .yg-reveal-val { background: color-mix(in srgb, var(--yg-bad) 14%, transparent);
+  color: var(--color-foreground, #e8ebf2); user-select: all; }
+.yg-reveal-btn { background: transparent; border: 1px solid var(--yg-border); border-radius: 4px; color: var(--yg-accent);
+  font-size: 11px; line-height: 1; padding: 3px 5px; cursor: pointer; user-select: none; touch-action: none; }
+.yg-reveal-btn:hover, .yg-reveal-btn:focus-visible { border-color: var(--yg-accent); outline: none; }
+.yg-reveal.yg-reveal-on .yg-reveal-btn { background: var(--yg-accent); color: #000; }

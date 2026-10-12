@@ -1,4 +1,13 @@
 {
+ "No incidents yet.": "Инцидентов пока нет.",
+ "Hold to show the full value": "Удерживайте, чтобы увидеть значение целиком",
+ "Could not show the value.": "Не удалось показать значение.",
+ "Unknown finding.": "Неизвестная находка.",
+ "This value was not stored in the vault, so it cannot be shown.": "Это значение не сохранено в сейфе, поэтому его нельзя показать.",
+ "The value is no longer in the vault.": "Этого значения больше нет в сейфе.",
+ "🔒 Everything runs on this computer. Secrets are masked; the full value appears only while you hold 👁, and every view is logged.": "🔒 Всё работает на этом компьютере. Секреты замаскированы: полное значение видно, только пока вы удерживаете 👁, и каждый просмотр записывается в журнал.",
+ "in #": "в #",
+
  "Live protection": "Защита",
  "live protection": "защита в реальном времени",
  "Live protection (#)": "Защита (#)",

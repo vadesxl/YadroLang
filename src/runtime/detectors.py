@@ -37,7 +37,7 @@ class Finding:
 
     @property
     def preview(self) -> str:
-        return mask(self.value)
+        return mask(self.value, self.kind)
 
     def public(self) -> dict:
         """Safe-to-display dict: no raw value."""
@@ -45,11 +45,49 @@ class Finding:
                 "preview": self.preview, "confidence": self.confidence, "path": self.path}
 
 
-def mask(value: str) -> str:
-    v = value.strip()
+_KNOWN_PREFIXES = ("github_pat_", "sk-proj-", "sk-ant-", "sk_live_", "rk_live_", "glpat-", "ghp_", "gho_",
+                   "ghu_", "ghs_", "ghr_", "xoxb-", "xoxp-", "xoxa-", "xoxr-", "xoxs-", "AKIA", "ASIA", "AIza",
+                   "eyJ", "sk-")
+MAX_SHOWN = 0.4          # a preview never shows more than 40 % of the secret's characters
+
+
+def _generic(v: str) -> str:
     if len(v) <= 8:
         return "•" * len(v)
-    return f"{v[:4]}…{v[-4:]}"
+    head = 2 if len(v) <= 16 else 4
+    return f"{v[:head]}***{v[-2:]}"
+
+
+def mask(value: str, kind: str = "") -> str:
+    """Partial, recognisable preview of a secret ("ghp_8a2b***9c", "**** 4432").
+
+    Shows the public prefix (token type) and a few characters so the user knows WHICH secret
+    leaked, but never more than MAX_SHOWN of the characters, and never any key body.
+    """
+    v = (value or "").strip()
+    if kind in ("private_key", "wallet_keystore", "solana_keypair"):
+        first = v.splitlines()[0].strip() if v else ""
+        return f"[{first[:30]} … {len(v)} chars]" if first.startswith("-----") else f"[{len(v)} chars]"
+    if kind in ("seed_phrase", "seed_phrase_unverified"):
+        words = v.split()
+        return f"{words[0]} ••• {words[-1]} ({len(words)} words)" if len(words) >= 6 else "•" * 8
+    if kind == "card_number":
+        digits = "".join(c for c in v if c.isdigit())
+        return f"**** {digits[-4:]}" if len(digits) >= 12 else _generic(v)
+    if kind == "email" and "@" in v:
+        local, domain = v.rsplit("@", 1)
+        return f"{local[:1]}***@{domain}"
+    if kind == "password_in_url" and "@" in v and "://" in v:
+        head, host = v.rsplit("@", 1)
+        user = head.rsplit(":", 1)[0]
+        return f"{user}:***@{host}"
+    if kind == "iban" and len(v) > 12:
+        out = f"{v[:4]} **** {v[-4:]}"
+    else:
+        prefix = next((p for p in _KNOWN_PREFIXES if v.startswith(p)), "")
+        out = f"{v[:len(prefix) + 4]}***{v[-2:]}" if prefix else _generic(v)
+    shown = len(out.replace("*", "").replace(" ", ""))
+    return out if shown <= MAX_SHOWN * len(v) else _generic(v) if len(v) > 16 else "•" * len(v)
 
 
 # ---------------------------------------------------------------- patterns

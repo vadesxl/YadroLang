@@ -6,7 +6,8 @@ import vm from "node:vm";
 
 const src = readFileSync(process.argv[2], "utf8");
 const posted = [];
-const GH_PREVIEW = "ghp_…ab12";
+const GH_PREVIEW = "ghp_8a2b***12";
+const GH_FULL = "ghp_8a2b" + "FAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKE12";
 const incidents = {
   status: "ok", pending: 2, items: [
     { id: "YG-1A2B3C", status: "pending", at: Math.floor(Date.now() / 1000) - 30, attempts: 2,
@@ -50,6 +51,7 @@ const React = {
 let Page = null;
 const sandbox = {
   console, queueMicrotask, setInterval: () => 1, clearInterval: () => {}, Date, Math, JSON, String, Promise,
+  setTimeout: (f, ms) => { const t = setTimeout(f, ms); t.unref(); return t; }, clearTimeout,
   document: { hidden: false },
   window: {
     __HERMES_PLUGINS__: { register: (name, c) => { if (name === "yadro-guard") Page = c; } },
@@ -57,6 +59,7 @@ const sandbox = {
       React,
       fetchJSON: async (url, init) => {
         if (init && init.method === "POST") { posted.push({ url, body: JSON.parse(init.body) });
+          if (url.endsWith("/incidents/reveal")) return { status: "ok", value: GH_FULL };
           return { status: "ok", next: "Ask the agent to try again." }; }
         if (url.endsWith("/incidents")) return incidents;
         if (url.endsWith("/vault")) return vault;
@@ -108,9 +111,25 @@ for (const m of ["Starts a server open to the whole network", "ollama serve --ho
 if (actText.includes("Protect & send")) throw new Error("action incident must not offer Protect & send");
 const must = ["YADRO GUARD", "Live protection (2)", "2 actions blocked", "YG-1A2B3C", "GitHub access token", GH_PREVIEW,
   "terminal", "shell: curl", "sess-123", "Protect & send", "Block & quarantine", "Allow once", "pid 4242",
-  "Blocked, secret quarantined", "Secret values are never shown or sent"];
+  "Blocked, secret quarantined", "Secrets are masked"];
 for (const m of must) if (!all.includes(m)) throw new Error("missing text: " + m);
 if (/[\u0400-\u04FF]/.test(all)) throw new Error("UI must be English only");
+if (all.includes(GH_FULL)) throw new Error("full secret must not be visible before the eye is held");
+if (!find(tree, (n) => n.props && n.props.className && n.props.className.includes("yg-grid live")).length)
+  throw new Error("live tab must use the full-height layout");
+
+// ---- hold-to-show eye: value appears only while held, request goes to /incidents/reveal ----
+{
+  const eye = () => find(tree, (n) => n.type === "button" && n.props.className === "yg-reveal-btn")[0];
+  if (!eye()) throw new Error("eye button not rendered next to the masked secret");
+  eye().props.onPointerDown({ preventDefault() {} }); await tick(); await tick(); tree = render();
+  const rv = posted.find((x) => x.url.endsWith("/incidents/reveal"));
+  if (!rv || rv.body.incident !== "YG-1A2B3C" || rv.body.index !== 0) throw new Error("reveal not posted: " + JSON.stringify(posted));
+  if (!text(tree).includes(GH_FULL)) throw new Error("full value not shown while the eye is held");
+  eye().props.onPointerUp(); tree = render();
+  if (text(tree).includes(GH_FULL)) throw new Error("full value must disappear when the eye is released");
+  posted.length = 0;
+}
 
 const btn = find(tree, (n) => n.type === "button" && text(n.children).includes("Protect & send"))[0];
 btn.props.onClick(); await tick(); await tick(); tree = render();
@@ -140,6 +159,8 @@ for (const [label, needle] of [["Exposure", "PostgreSQL database"], ["Check code
   let t = render(); rerender = () => { t = render(); };
   await tick(); await tick(); t = render();
   const s = text(t);
-  for (const m of ["Защита", "Сейф"]) if (!s.includes(m)) throw new Error("Russian UI missing: " + m + " :: " + s.slice(0, 300));
+  for (const m of ["Защита", "Сейф", "Секреты замаскированы"]) if (!s.includes(m)) throw new Error("Russian UI missing: " + m + " :: " + s.slice(0, 300));
+  const eyeRu = find(t, (n) => n.type === "button" && n.props.className === "yg-reveal-btn")[0];
+  if (!eyeRu || !/[\u0400-\u04FF]/.test(eyeRu.props.title)) throw new Error("eye hint must be Russian");
 }
 console.log("OK guard page rendered, decision posted, tabs work, Russian UI");

@@ -55,7 +55,7 @@ class ТестыДетекторов(unittest.TestCase):
     def test_превью_маскирует_значение(self):
         ф = d.scan_text(f"x {GH}")[0]
         self.assertNotIn(GH, str(ф.public()))
-        self.assertTrue(ф.preview.startswith("ghp_") and "…" in ф.preview)
+        self.assertTrue(ф.preview.startswith("ghp_") and "***" in ф.preview)
 
     def test_вложенные_аргументы_и_редактирование(self):
         args = {"url": "https://api.x", "headers": {"Authorization": f"token {GH}"}, "body": [f"card {CARD}"]}

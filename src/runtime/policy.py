@@ -199,6 +199,31 @@ def list_incidents(limit: int = 100) -> List[Dict[str, Any]]:
     return [{k: v for k, v in inc.items() if k != "key"} for inc in _read("incidents.json", [])[:limit]]
 
 
+def reveal(incident_id: str, index: int) -> Dict[str, Any]:
+    """Full value of one caught secret, for the local dashboard's "hold to show" eye button.
+
+    The journal itself never holds raw values: the value is decrypted from the vault by the
+    incident's token, only on an explicit user gesture, and every reveal is written to the
+    vault audit log and to the incident's event list. Trashed vault entries are not revealed.
+    """
+    inc = next((i for i in _read("incidents.json", []) if i.get("id") == incident_id), None)
+    if not inc:
+        return {"status": "error", "message": "Incident not found."}
+    findings = inc.get("findings") or []
+    if not isinstance(index, int) or isinstance(index, bool) or not 0 <= index < len(findings):
+        return {"status": "error", "message": "Unknown finding."}
+    token = findings[index].get("token")
+    if not token:
+        return {"status": "error", "message": "This value was not stored in the vault, so it cannot be shown."}
+    try:
+        from .. import vault
+        value = vault.достать(token, True, f"dashboard reveal, incident {incident_id}")
+    except Exception:
+        return {"status": "error", "message": "The value is no longer in the vault."}
+    _log_event(incident_id, f"full value shown in the dashboard ({findings[index].get('title', 'secret')})")
+    return {"status": "ok", "value": value}
+
+
 CHOICES = {"protect": "Protect & send", "block": "Block & quarantine", "allow": "Allow once"}
 
 
