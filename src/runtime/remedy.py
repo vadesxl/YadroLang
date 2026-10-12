@@ -52,6 +52,10 @@ SETTINGS = {                                    # fixed commands, no user input
 _SETTINGS_FOR = {"share": "sharing", "vendor": "services", "remote": "services"}
 
 
+def _is_windows() -> bool:      # one place to check (tests patch this, not os.name)
+    return os.name == "nt"
+
+
 class RemedyError(Exception):
     pass
 
@@ -201,7 +205,7 @@ def _service_start_type(name: str) -> str:
 # ---------- actions ----------
 def run(action: str, proto: str, port: int, pid: int) -> dict:
     """Perform one action for one live listener. "message" is a short code the UI translates."""
-    if os.name != "nt":
+    if not _is_windows():
         raise RemedyError("Only Windows is supported.")
     l = _live(proto, port, pid)
     if action in ("trust", "untrust"):
@@ -255,7 +259,7 @@ def run(action: str, proto: str, port: int, pid: int) -> dict:
 
 
 def open_settings(which: str) -> dict:
-    if which not in SETTINGS or os.name != "nt":
+    if which not in SETTINGS or not _is_windows():
         raise RemedyError("Unknown settings page.")
     subprocess.Popen(SETTINGS[which])
     return {"status": "ok", "message": "settings"}

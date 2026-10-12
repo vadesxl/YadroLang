@@ -183,7 +183,7 @@ class ТестыЭкспозиции(unittest.TestCase):
 
     def test_действия_проверяют_ввод_и_живой_порт(self):
         from src.runtime import remedy as R
-        with mock.patch.object(R.E, "_run", return_value=""), mock.patch.object(R.os, "name", "nt"):
+        with mock.patch.object(R.E, "_run", return_value=""), mock.patch.object(R, "_is_windows", return_value=True):
             for плохой in (("block_port", "ICMP", 1, 1), ("block_port", "TCP", 70000, 1), ("trust", "TCP", "x", 1)):
                 with self.assertRaises(R.RemedyError):
                     R.run(*плохой)
@@ -197,7 +197,7 @@ class ТестыЭкспозиции(unittest.TestCase):
         живой.reach = "all_networks"
         скрипты = []
         with tempfile.TemporaryDirectory() as д, mock.patch.dict(os.environ, {"YADRO_GUARD_HOME": д}), \
-                mock.patch.object(R, "_live", return_value=живой), mock.patch.object(R.os, "name", "nt"), \
+                mock.patch.object(R, "_live", return_value=живой), mock.patch.object(R, "_is_windows", return_value=True), \
                 mock.patch.object(R, "_elevated", side_effect=скрипты.append):
             р = R.run("block_port", "TCP", 5432, 700)
             self.assertIn("New-NetFirewallRule -Name 'YadroGuard-Block-TCP-5432'", скрипты[0])
