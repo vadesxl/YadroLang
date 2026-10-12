@@ -130,4 +130,16 @@ for (const [label, needle] of [["Exposure", "PostgreSQL database"], ["Check code
       if (!t.includes(m)) throw new Error("exposure tab missing: " + m);
   }
 }
-console.log("OK guard page rendered, decision posted, tabs work");
+// ---- Russian UI: same page with a Russian system language ----
+{
+  let PageRu = null;
+  const ru = vm.createContext({ ...sandbox, navigator: { language: "ru-RU", languages: ["ru-RU"] },
+    window: { ...sandbox.window, __HERMES_PLUGINS__: { register: (n, c) => { PageRu = c; } } } });
+  vm.runInContext(src, ru);
+  Page = PageRu; store.clear(); rerender = null;
+  let t = render(); rerender = () => { t = render(); };
+  await tick(); await tick(); t = render();
+  const s = text(t);
+  for (const m of ["Защита", "Сейф"]) if (!s.includes(m)) throw new Error("Russian UI missing: " + m + " :: " + s.slice(0, 300));
+}
+console.log("OK guard page rendered, decision posted, tabs work, Russian UI");
