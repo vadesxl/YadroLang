@@ -25,6 +25,9 @@ alive.pulse
 evidence_*/
 private/
 
+# Local-only archive: SaaS paper docs kept off the public repo
+docs/archive/
+
 # Editors / OS
 .vscode/
 .idea/
