@@ -1,7 +1,7 @@
 import json,subprocess,sys,tempfile,unittest
 from pathlib import Path
 class ТестыPackagingSubprocess(unittest.TestCase):
- def cli(self,*args):return subprocess.run([sys.executable,"-m","src.guard_cli",*args],text=True,capture_output=True,check=False)
+ def cli(self,*args):return subprocess.run([sys.executable,"-m","src.guard_cli",*args],text=True,capture_output=True,encoding="utf-8",check=False)
  def test_version(self):
   result=self.cli("--version");self.assertEqual(0,result.returncode);self.assertIn("2.1.0",result.stdout)
  def test_type_error_это_source_error(self):
