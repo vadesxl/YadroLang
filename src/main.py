@@ -5,7 +5,8 @@ from llvmlite import binding as llvm
 from src.лексер import Лексер,ОшибкаЛексера
 from src.синтаксис import Парсер,ОшибкаПарсера,Вызов,Число,Бинарный
 from src.этика import ЭтическийАнализатор,ЭтическаяОшибка,СТОКИ,ИСТОЧНИКИ,САНИТАЙЗЕРЫ
-from src.типы import ПроверкаТипов,ОшибкаТипов
+from src.типы import ОшибкаТипов
+from src.типы_sound import ЗвуковаяПроверкаТипов as ПроверкаТипов
 from src.кодоген import Кодоген,ОшибкаКодогена
 ТАЙМАУТ_TOOL=30
 class ОшибкаТочкиВхода(Exception):pass
