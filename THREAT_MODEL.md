@@ -12,6 +12,8 @@
 ## В области защиты
 Явные и неявные потоки, confused deputy, excessive agency, malformed input, policy tampering через символы, compiler crashes, завершение анализа и поведение на трёх ОС.
 
+Вывод через `печать` и чувствительный числовой результат `старт()` проверяются до LLVM IR. Метки ветвей и циклов учитываются в совместных межпроцедурных сводках. Подробности и регрессии: [reviewed-flow-fixes.md](docs/analysis/reviewed-flow-fixes.md).
+
 ## Вне области
 Микроархитектурные side channels, вредоносный LLVM, runtime compromise после компиляции, корректность внешней реализации sanitizer и импорт произвольных MCP-форматов.
 
